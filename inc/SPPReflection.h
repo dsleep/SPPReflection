@@ -1,11 +1,45 @@
-// SPPReflection.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
+// Copyright (c) David Sleeper (Sleeping Robot LLC)
+// Distributed under MIT license, or public domain if desired and
+// recognized in your jurisdiction.
+
+#pragma once
 
 #include <iostream>
 #include <vector>
 #include <list>
 #include <string>
 #include <functional>
+#include <memory>
+
+#if _WIN32 && !defined(SPP_REFLECTION_STATIC)
+    #ifdef SPP_REFLECTION_EXPORT
+        #define SPP_REFLECTION_API __declspec(dllexport)
+    #else
+        #define SPP_REFLECTION_API __declspec(dllimport)
+    #endif
+#else
+    #define SPP_REFLECTION_API 
+#endif
+
+//////////////////////////////////////////////////
+//UGLY COPIES FROM OTHER CORE HEADERS
+//////////////////////////////////////////////////
+
+// move to private include
+#ifdef _MSC_VER
+#pragma warning( disable : 4251 )
+#pragma warning( disable : 4275 )
+#pragma warning( disable : 4996 )
+//conversion from ... possible loss of data
+#pragma warning( disable : 4100 )
+#endif
+
+
+// HAAXXORS to fake your objects
+struct ObjectBase
+{
+    std::string _baseName;
+};
 
 #define SPP_CAT_IMPL(a, b) a##b
 #define SPP_CAT(a, b) SPP_CAT_IMPL(a, b)
@@ -39,39 +73,28 @@ namespace SPP_CAT(spp_auto_reg_namespace_, __LINE__)								\
 template <typename T, std::size_t N>
 constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 
+//////////////////////////////////////////////////
+//END UGLY COPIES
+//////////////////////////////////////////////////
 
-
-#define RTTR_REGISTRATION_FUNC_EXTRACT_VARIABLES(begin_skip, end_skip)      \
-    static constexpr std::size_t skip_size_at_begin = begin_skip;      \
-    static constexpr std::size_t skip_size_at_end   = end_skip;        
-
-/////////////////////////////////////////////////////////////////////////////////
-
-
-RTTR_REGISTRATION_FUNC_EXTRACT_VARIABLES(22, 16)  // with " noexcept"
-
-const char* extract_type_signature(const char* signature) noexcept
-{
-    //    static_assert(N > skip_size_at_begin + skip_size_at_end, "RTTR is misconfigured for your compiler.")
-    return &signature[skip_size_at_begin];
-}
-
+SPP_REFLECTION_API const char* extract_type_signature(const char* signature) noexcept;
+SPP_REFLECTION_API std::size_t get_size(const char* s) noexcept;
 /////////////////////////////////////////////////////////////////////////////////
 
 template<typename T>
 const char* f() noexcept
 {
     return extract_type_signature(
-#if RTTR_COMPILER == RTTR_COMPILER_MSVC
         __FUNCSIG__
-#elif RTTR_COMPILER == RTTR_COMPILER_GNUC
-        __PRETTY_FUNCTION__
-#elif RTTR_COMPILER == RTTR_COMPILER_CLANG || RTTR_COMPILER == RTTR_COMPILER_APPLECLANG
-        __PRETTY_FUNCTION__
-#else
-    #error "Don't know how the extract type signatur for this compiler! Abort! Abort!"
-#endif
     );
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
+template<typename T>
+std::string get_type_name() noexcept
+{
+    return std::string(f<T>(), get_size(f<T>()));
 }
 
 struct ArrayManipulator
@@ -101,7 +124,6 @@ struct TArrayManipulator : public ArrayManipulator
         AsType(ArrayPtr).resize(NewSize);
     }
 };
-
 
 struct WrapManipulator
 {
@@ -138,43 +160,19 @@ struct TWrapManipulator : public WrapManipulator
 
 struct type_data
 {
-    //type_data* raw_type_data;
-    //type_data* wrapped_type;
-    //type_data* array_raw_type;
-
     std::string name;
-    //std::string_view type_name;
 
     std::size_t get_sizeof;
     std::size_t get_pointer_dimension;
-
 
     std::unique_ptr< ArrayManipulator > arraymanipulator;
     std::unique_ptr< WrapManipulator > wrapmanipulator;
 
     std::unique_ptr< class ReflectedStruct > structureRef;
-
-
-    //impl::create_variant_func create_variant;
-    //impl::get_base_types_func get_base_types; // FIXME: this info should not be stored, its just temporarily,
-    //// thats why we store it as function pointer
-
-    //enumeration_wrapper_base* enum_wrapper;
-    //impl::get_metadata_func    get_metadata;
-    //impl::create_wrapper_func  create_wrapper;
-    //impl::visit_type_func      visit_type;
-
-    //bool is_valid;
-    //RTTR_FORCE_INLINE bool type_trait_value(type_trait_infos type_trait) const RTTR_NOEXCEPT { return m_type_traits.test(static_cast<std::size_t>(type_trait)); }
-
-
-    //type_traits m_type_traits;
-    //class_data  m_class_data;
-
 };
 
 
-class CPPType
+class SPP_REFLECTION_API CPPType
 {
 public:
     typedef uintptr_t type_id;
@@ -211,28 +209,9 @@ private:
     type_data* _typeData;
 };
 
-CPPType create_type(type_data* data) noexcept
-{
-    return data ? CPPType(data) : CPPType();
-}
-
 
 
 /////////////////////////////////////////////////////////////////////////////////
-
-std::size_t get_size(const char* s) noexcept
-{
-    return (std::char_traits<char>::length(s) - skip_size_at_end);
-}
-
-/////////////////////////////////////////////////////////////////////////////////
-
-template<typename T>
-std::string get_type_name() noexcept
-{
-    return std::string(f<T>(), get_size(f<T>()));
-}
-
 
 template<typename...T>
 struct type_list
@@ -392,7 +371,6 @@ struct pointer_count_impl<T, std::enable_if_t<std::is_pointer<T>::value &&
 template<typename T>
 using pointer_count = std::integral_constant<std::size_t, pointer_count_impl<T>::size>;
 
-
 template<typename T>
 std::unique_ptr<type_data> make_type_data()
 {
@@ -400,12 +378,7 @@ std::unique_ptr<type_data> make_type_data()
         (
             new type_data
             {
-                //raw_type_info<T>::get_type().m_type_data, 
-                //wrapper_type_info<T>::get_type().m_type_data,
-                //array_raw_type<T>::get_type().m_type_data,
-
-                get_type_name<T>(), // get_type_name<T>(),
-
+                get_type_name<T>(), 
                 get_size_of<T>::value(),
                 pointer_count<T>::value
             }
@@ -426,27 +399,20 @@ std::unique_ptr<type_data> make_type_data()
     return obj;
 }
 
-
-
-class TypeCollection
+class SPP_REFLECTION_API TypeCollection
 {
+    NO_COPY_ALLOWED(TypeCollection);
+
 private:
     std::vector< std::unique_ptr<type_data> > type_store;
 
 public:
-    type_data *Push(std::unique_ptr<type_data> &&InData)
-    {
-        auto outTypeData = InData.get();
-        type_store.push_back(std::move(InData));
-        return outTypeData;
-    }
+    TypeCollection();
+    type_data* Push(std::unique_ptr<type_data>&& InData);
 };
 
-TypeCollection& GetTypeCollection()
-{
-    static TypeCollection sO;
-    return sO;
-}
+SPP_REFLECTION_API TypeCollection& GetTypeCollection();
+SPP_REFLECTION_API CPPType create_type(type_data* data) noexcept;
 
 template<typename T>
 using is_complete_type = std::integral_constant<bool, !std::is_function<T>::value && !std::is_same<T, void>::value>;
@@ -471,8 +437,6 @@ CPPType create_or_get_type() noexcept
     return val;
 }
 
-
-
 template<typename T>
 CPPType get_type() noexcept
 {
@@ -486,17 +450,6 @@ CPPType get_type<void>() noexcept
     static const CPPType val = create_type(nullptr);
     return val;
 }
-
-
-
-//template<typename T>
-//type get() noexcept
-//{
-//    using non_ref_type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
-//    
-//    return detail::create_or_get_type<non_ref_type>();
-//}
-
 
 class ReflectedProperty
 {
@@ -515,21 +468,10 @@ public:
     const auto& GetName() const { return _name; }
     auto GetPropOffset() const { return _propOffset; }
 
-    virtual std::string ToString(void* structAddr) 
-    {
-        return "";
-    }
+    virtual void LogOut(void* structAddr) {}
 };
 
-class ReflectedArguments
-{
-public:
-    void* _baseAddress = nullptr;
 
-public:
-    ReflectedArguments() {}
-    virtual ~ReflectedArguments() {}
-};
 
 struct Argument
 {
@@ -561,16 +503,12 @@ protected:
     std::function<void(void*, Argument &, const std::vector< Argument >&)> _method;
 
 public:
-
     const auto& GetName() const { return _name; }
     const auto& GetCaller() const { return _method; }
     const auto& GetArgTypes() const { return _propertyTypes; }
     const auto& GetReturnType() const { return _returnType; }
     
-    virtual std::string ToString(void* structAddr) 
-    {
-        return "";
-    }
+    virtual void LogOut(void* structAddr) {}
 };
 
 class StringProperty : public ReflectedProperty
@@ -584,9 +522,9 @@ public:
         return (std::string*)((uint8_t*)structAddr + _propOffset);
     }
 
-    virtual std::string ToString(void* structAddr) override
+    virtual void LogOut(void* structAddr) override
     {
-        return *AccessValue(structAddr);
+        SPP_LOG(LOG_REFLECTION, LOG_INFO, "String: %s", AccessValue(structAddr)->c_str());
     }
 };
 
@@ -602,26 +540,13 @@ public:
         return (T*)((uint8_t*)structAddr + _propOffset);
     }
 
-    virtual std::string ToString(void* structAddr) override
+    virtual void LogOut(void* structAddr) override
     {
-        return std::to_string( *AccessValue(structAddr) );
+        SPP_LOG(LOG_REFLECTION, LOG_INFO, "Number: %s", std::to_string(*AccessValue(structAddr)).c_str());
     }
 };
 
-//using FloatProperty = TNumericalProperty<float>;
-//using DoubleProperty = TNumericalProperty<double>;
-//
-//using Int8Property = TNumericalProperty<int8_t>;
-//using UInt8Property = TNumericalProperty<uint8_t>;
-//
-//using Int16Property = TNumericalProperty<int16_t>;
-//using UInt16Property = TNumericalProperty<uint16_t>;
-//
-//using Int32Property = TNumericalProperty<int32_t>;
-//using UInt32Property = TNumericalProperty<uint32_t>;
-//
-//using Int64Property = TNumericalProperty<int64_t>;
-//using UInt64Property = TNumericalProperty<uint64_t>;
+
 
 class DynamicArrayProperty : public ReflectedProperty
 {
@@ -637,20 +562,19 @@ public:
         return (void*)((uint8_t*)structAddr + _propOffset);
     }
 
-    virtual std::string ToString(void* structAddr) override
+    virtual void LogOut(void* structAddr) override
     {
         SE_ASSERT(_type.GetTypeData()->arraymanipulator);
 
         auto arrayAddr = AccessValue(structAddr);
         auto totalSize = _type.GetTypeData()->arraymanipulator->Size(arrayAddr);
 
-        std::cout << "ARRAY: " << " size: " << totalSize << std::endl;
+        SPP_LOG(LOG_REFLECTION, LOG_INFO, "ARRAY: size: %zd", totalSize);
         for (size_t Iter = 0; Iter < totalSize; Iter++)
         {
-            std::cout << "IDX: " << Iter << std::endl;
-            std::cout << _inner->ToString(_type.GetTypeData()->arraymanipulator->Element(arrayAddr, (int32_t) Iter)) << std::endl;
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "IDX: %zd", Iter);
+            _inner->LogOut(_type.GetTypeData()->arraymanipulator->Element(arrayAddr, (int32_t) Iter));
         }
-        return "";
     }
 };
 
@@ -660,7 +584,6 @@ class ObjectProperty : public ReflectedProperty
 public:
     ObjectProperty() {}
     virtual ~ObjectProperty() {}
-
 };
 
 class UniquePtrProperty : public ReflectedProperty
@@ -673,7 +596,7 @@ public:
         return (void*)((uint8_t*)structAddr + _propOffset);
     }
 
-    virtual std::string ToString(void* structAddr) override
+    virtual void LogOut(void* structAddr) override
     {
         SE_ASSERT(_type.GetTypeData()->wrapmanipulator);
 
@@ -681,10 +604,9 @@ public:
 
         if (_type.GetTypeData()->wrapmanipulator->IsValid(uniquePtrAddr))
         {
-            std::cout << "UNIQUE_PTR: " << _inner->ToString(_type.GetTypeData()->wrapmanipulator->GetValue(uniquePtrAddr)) << std::endl;
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "UNIQUE_PTR: ");
+            _inner->LogOut(_type.GetTypeData()->wrapmanipulator->GetValue(uniquePtrAddr));
         }
-
-        return "";
     }
 
     UniquePtrProperty() {}
@@ -712,8 +634,8 @@ public:
         {
             for (const auto& curProp : curStruct->_properties)
             {
-                std::cout << curProp->GetName() << " " << curProp->GetPropOffset() << std::endl;
-                std::cout << curProp->ToString(structAddr) << std::endl;
+                SPP_LOG(LOG_REFLECTION, LOG_INFO, "NAME: %s OFFSET: %zd", curProp->GetName().c_str(), curProp->GetPropOffset());
+                curProp->LogOut(structAddr);
             }
 
             curStruct = curStruct->_parent;
@@ -796,129 +718,12 @@ public:
         return (void*)((uint8_t*)structAddr + _propOffset);
     }
 
-    virtual std::string ToString(void* structAddr) override
+    virtual void LogOut(void* structAddr) override
     {
+        SPP_LOG(LOG_REFLECTION, LOG_INFO, "STRUCT PROP");
         auto newOffset = AccessValue(structAddr);
         _struct->DumpString(newOffset);
-        return "";
     }
-};
-
-//class PropertyIterator {
-//public:
-//
-//    using vector_iterator = std::vector< std::unique_ptr<ReflectedProperty> >::const_iterator;
-//    
-//    using value_type = std::unique_ptr<ReflectedProperty>;
-//    using difference_type = std::ptrdiff_t;
-//    using pointer = value_type*;
-//    using reference = value_type&;
-//    using iterator_category = std::random_access_iterator_tag;
-//
-//    int32_t classIdx = 0;
-//    vector_iterator curIter;
-//    vector_iterator endClassIter;
-//    std::vector< ReflectedStruct* > classstack;
-//
-//    PropertyIterator() {}
-//    PropertyIterator(ReflectedStruct *InStruct) 
-//    {
-//        auto curStruct = InStruct;
-//        while (curStruct)
-//        {
-//            classstack.push_back(curStruct);
-//            curStruct = curStruct->_parent;
-//        }
-//
-//        curIter = InStruct->_properties.begin();    
-//    }
-//
-//    void SetIteratorsFromClassIdx()
-//    {
-//        curIter = classstack[classIdx]->_properties.begin();
-//        endClassIter = classstack[classIdx]->_properties.end();
-//    }
-//
-//    auto operator*() const 
-//    { 
-//        return curIter->get();
-//    }
-//
-//    auto operator->() const
-//    {
-//        return curIter->get();
-//    }
-//        
-//    PropertyIterator& operator++()
-//    {
-//        curIter++;
-//        if (curIter == endClassIter)
-//        {
-//            classIdx++;
-//
-//
-//        }
-//
-//        return *this;
-//    }
-//    PropertyIterator& operator++(int junk) { (*this)++; return *this; }
-//
-//    friend bool operator==(const PropertyIterator& lhs, const PropertyIterator& rhs) {
-//        return lhs.m_ptr == rhs.m_ptr;
-//    }
-//    friend bool operator!=(const PropertyIterator& lhs, const PropertyIterator& rhs) {
-//        return !(lhs == rhs);
-//    }
-//
-//private:
-//    pointer m_ptr;
-//};
-
-struct ObjectBase
-{
-    std::string _baseName;
-};
-
-struct SceneParent : public ObjectBase
-{
-    int32_t matrix;
-};
-
-struct PlayerData
-{
-    int GUID;
-    std::string TAG;
-};
-
-struct PlayerFighters
-{
-    std::string name;
-    float health;
-};
-
-struct GuyTest
-{
-    float X;
-    std::vector< int32_t > timeStamps;
-    std::string GuyName;
-
-    float DoJump(float howHigh, std::string TestOut)
-    {
-        X += howHigh;
-        //TestOut = "hello";
-        return X;
-    }
-};
-
-struct SuperGuy : public GuyTest
-{
-    PARENT_CLASS(GuyTest)
-
-    int32_t health;
-    SceneParent* parent = nullptr;
-    PlayerData data;
-    std::unique_ptr< std::string > HitMe;
-    std::vector< std::unique_ptr< PlayerFighters > >  Players;
 };
 
 
@@ -927,6 +732,34 @@ constexpr size_t offsetOf(U T::* member)
 {
     return (char*)&((T*)nullptr->*member) - (char*)nullptr;
 }
+
+template<typename Func, std::size_t... Is>
+std::vector< CPPType > getmethodargs(std::index_sequence<Is...>)
+{
+    using arg_tuple = typename function_traits<Func>::arg_tuple;
+    std::vector< CPPType > types;
+    (types.push_back(get_type< std::tuple_element_t<Is, arg_tuple> >()), ...);
+    return types;
+}
+
+template<typename ClassType, typename Func, std::size_t... Is>
+inline void invoke(ClassType* BaseObject, Func func_ptr, Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
+{
+    using arg_tuple = typename function_traits<Func>::arg_tuple;
+    using return_type = typename function_traits<Func>::return_type;
+
+    if constexpr (std::is_same<return_type, void>::value)
+    {
+        (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
+    }
+    else
+    {
+        SE_ASSERT(retArg.reference);
+
+        *(return_type*)retArg.reference = (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
+    }
+}
+
 
 template<typename Class_Type>
 struct ClassBuilder
@@ -1006,7 +839,7 @@ struct ClassBuilder
         }
         else
         {
-            static_assert(false, "Unknown Property Type");
+            //static_assert(false, "Unknown Property Type");
         }
 
         return nullptr;
@@ -1056,35 +889,7 @@ struct ClassBuilder
         return *this;
     }
 
-    template<typename Func, std::size_t... Is>
-    std::vector< CPPType > getmethodargs(std::index_sequence<Is...>)
-    {
-        using arg_tuple = typename function_traits<Func>::arg_tuple;
-        std::vector< CPPType > types;
-        (types.push_back( get_type< std::tuple_element_t<Is, arg_tuple> >() ) , ...);
-        return types;
-    }
-
-    template<typename ClassType, typename Func, std::size_t... Is>
-    inline
-    static typename void invoke(ClassType* BaseObject, Func func_ptr, Argument &retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
-    {
-        using arg_tuple = typename function_traits<Func>::arg_tuple;
-        using return_type = typename function_traits<Func>::return_type;
-
-        if constexpr (std::is_same<return_type, void>::value)
-        {
-            (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
-        }
-        else
-        {
-            SE_ASSERT(retArg.reference);
-
-            *(return_type*)retArg.reference = (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
-        }
-    }
-
-
+    
     template<typename Func>
     ClassBuilder& method(const char* InName, Func Class_Type::* method)
     {
@@ -1123,75 +928,4 @@ template<typename Class_Type>
 ClassBuilder< Class_Type> build_class(std::string_view name)
 {    
     return ClassBuilder< Class_Type>();
-}
-
-SPP_AUTOREG_START
-
-    build_class<PlayerFighters>("PlayerFighters")
-        .property("name", &PlayerFighters::name)
-        .property("health", &PlayerFighters::health);
-
-    build_class<PlayerData>("PlayerData")
-        .property("GUID", &PlayerData::GUID)
-        .property("TAG", &PlayerData::TAG);
-
-    build_class<GuyTest>("GuyTest")
-        .property("X", &GuyTest::X)
-        .property("timeStamps", &GuyTest::timeStamps)
-        .property("GuyName", &GuyTest::GuyName)
-
-        .method("DoJump", &GuyTest::DoJump);
-
-    build_class<SuperGuy>("SuperGuy")
-        .property("health", &SuperGuy::health)
-        .property("parent", &SuperGuy::parent)
-        .property("data", &SuperGuy::data)
-        .property("HitMe", &SuperGuy::HitMe)
-        .property("Players", &SuperGuy::Players);
-        
-SPP_AUTOREG_END
-
-
-
-int main()
-{
-    std::cout << "Hello World!\n";
-
-    SuperGuy guy;
-
-    guy.timeStamps.push_back(4);
-    guy.timeStamps.push_back(5);
-
-    guy.data.GUID = 123456;
-    guy.data.TAG = "DATATAG";
-
-    guy.health = 123;
-    guy.GuyName = "yoyoyo";
-    guy.X = 321.1f;
-
-    guy.Players.push_back(std::unique_ptr<PlayerFighters>(
-        new PlayerFighters{
-            "JOJO",
-            12.23f
-        }));
-
-    guy.Players.push_back(std::unique_ptr<PlayerFighters>(
-        new PlayerFighters{
-            "James",
-            0.123f
-        }));
-
-    guy.HitMe = std::make_unique< std::string >("AHHHHHHH 123");
-
-    {
-        CPPType getInfo = get_type< SuperGuy >();
-        void* ptrToGuyNoTypeData = &guy;
-
-        auto classData = getInfo.GetTypeData()->structureRef.get();
-
-        classData->DumpString(ptrToGuyNoTypeData);
-
-        auto jumpOut = 
-            classData->Invoke<float>(ptrToGuyNoTypeData, std::string("DoJump"), 332211.0f, std::string("Test") );
-    }
 }
