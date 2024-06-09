@@ -2,6 +2,14 @@
 // Distributed under MIT license, or public domain if desired and
 // recognized in your jurisdiction.
 
+// RTTR credit
+// 
+// Much is based on processing RTTR and slimming the meat I needed from it - DS
+// 
+// RTTR is released under the terms of the MIT license, so it is free to use in your free or commercial projects.
+// Copyright(c) 2014 - 2018 Axel Menzel info@rttr.org
+// https://github.com/rttrorg/rttr
+
 #pragma once
 
 #include <iostream>
