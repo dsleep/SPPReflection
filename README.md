@@ -7,6 +7,10 @@ Reflection is used to gather information (traditionally at runtime - while the a
 ## Why?
 Reflection can help abstract things in C++ that aren't traditionally abstractable... Serialization, replication, mirroring into a scripting system or editor interface.
 
+## Examples
+RTTR - https://github.com/rttrorg/rttr
+reflect-cpp - https://github.com/getml/reflect-cpp
+
 ## How
 Well this is the part up for much debate and can engulf you into the darkest and wackiest part of C++. While C++ can often have a direct correlation into how the operating system will operate (pointers, sequential arrays, etc.) or macros and template to help in reducing repeate code, TMP (template meta programming) and just general type manipulation (erasure, casting, dynamic casting) in C++ can be a strange nightmarish hellscape that is not entirely worthy of the general programmers time.
 
