@@ -839,6 +839,7 @@ struct ClassBuilder
         }
         else
         {
+            SE_ASSERT(false);
             //static_assert(false, "Unknown Property Type");
         }
 
