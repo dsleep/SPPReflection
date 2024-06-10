@@ -12,9 +12,10 @@ RTTR - https://github.com/rttrorg/rttr
 reflect-cpp - https://github.com/getml/reflect-cpp
 
 ## How
-Well this is the part up for much debate and can engulf you into the darkest and wackiest part of C++. While C++ can often have a direct correlation into how the operating system will operate (pointers, sequential arrays, etc.) or macros and template to help in reducing repeate code, TMP (template meta programming) and just general type manipulation (erasure, casting, dynamic casting) in C++ can be a strange nightmarish hellscape that is not entirely worthy of the general programmers time.
+Well, this is the part up for much debate and can engulf you into the darkest and wackiest part of C++. While C++ can often have a direct correlation into how the operating system will operate (pointers, sequential arrays, etc.) or macros and template to help in reducing repeated code, TMP (template meta programming) and just general type manipulation (erasure, casting, dynamic casting) in C++ can be a strange nightmarish hellscape that is not entirely worthy of the general programmer’s time.
 
-So we'll dabble in this post apocolpytic hellscape as little as we can, and hence why I'm going with C++20. In C++20 there is the additon of Constraints and concepts (https://en.cppreference.com/w/cpp/language/constraints) and prior to that its all about SFINAE (substitution failure is not an error https://en.wikipedia.org/wiki/Substitution_failure_is_not_an_error).
+So we'll dabble in this post-apocalyptic hellscape as little as we can, and hence why I'm going with C++20. In C++20 there is the addition of Constraints and concepts (https://en.cppreference.com/w/cpp/language/constraints) and prior to that it’s all about SFINAE (substitution failure is not an error https://en.wikipedia.org/wiki/Substitution_failure_is_not_an_error).
+
 
 ### Step 1: Types, get your types here!
 
