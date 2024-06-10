@@ -43,11 +43,7 @@
 #endif
 
 
-// HAAXXORS to fake your objects
-struct ObjectBase
-{
-    std::string _baseName;
-};
+
 
 #define SPP_CAT_IMPL(a, b) a##b
 #define SPP_CAT(a, b) SPP_CAT_IMPL(a, b)
@@ -217,9 +213,8 @@ private:
     type_data* _typeData;
 };
 
-
-
 /////////////////////////////////////////////////////////////////////////////////
+
 
 template<typename...T>
 struct type_list
@@ -459,6 +454,21 @@ CPPType get_type<void>() noexcept
     return val;
 }
 
+/////////////////////////////////////////////////////////////////////////////////
+
+// HAAXXORS to fake your objects
+struct ObjectBase
+{
+    std::string _baseName;
+    
+    ObjectBase() {}
+
+    virtual CPPType GetCPPType() const { return get_type < ObjectBase >(); }
+    virtual ~ObjectBase() {}
+};
+
+/////////////////////////////////////////////////////////////////////////////////
+
 ////////////////////////////////////////////
 //
 // PROPRTIES
@@ -641,7 +651,6 @@ class ReflectedStruct
 public:
     ReflectedStruct* _parent = nullptr;
 
-	std::string _name;
 	std::vector< std::unique_ptr<ReflectedProperty> > _properties;
     std::vector< std::unique_ptr<ReflectedMethod> > _methods;
 

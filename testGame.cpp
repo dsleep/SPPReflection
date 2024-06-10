@@ -7,11 +7,11 @@
 
 #include "SPPReflection.h"
 
-
-
 struct SceneParent : public ObjectBase
 {
     int32_t matrix;
+
+    virtual CPPType GetCPPType() const override { return get_type < SceneParent >(); }
 };
 
 struct PlayerData
@@ -26,7 +26,7 @@ struct PlayerFighters
     float health;
 };
 
-struct GuyTest
+struct GuyTest : public ObjectBase
 {
     float X;
     std::vector< int32_t > timeStamps;
@@ -38,6 +38,8 @@ struct GuyTest
         //TestOut = "hello";
         return X;
     }
+
+    virtual CPPType GetCPPType() const override { return get_type < GuyTest >(); }
 };
 
 
@@ -71,6 +73,8 @@ struct SuperGuy : public GuyTest
     PlayerData data;
     std::unique_ptr< std::string > HitMe;
     std::vector< std::unique_ptr< PlayerFighters > >  Players;
+
+    virtual CPPType GetCPPType() const override { return get_type < SuperGuy >(); }
 };
 
 //test split auto reg
@@ -110,23 +114,27 @@ int main()
         }));
     guy.HitMe = std::make_unique< std::string >("AHHHHHHH 123");
 
-    {
-        CPPType getInfo = get_type< SuperGuy >();
-        auto classData = getInfo.GetTypeData()->structureRef.get();
+    {        
+        // cleanse it of any type
+        void* ptrToGuyNoTypeData = &guy;
+            
+        auto foundType = ((ObjectBase*)ptrToGuyNoTypeData)->GetCPPType();
+        auto classData = foundType.GetTypeData()->structureRef.get();
+        classData->DumpString(ptrToGuyNoTypeData);
 
-        {
-            // cleanse it of any type
-            void* ptrToGuyNoTypeData = &guy;
-            classData->DumpString(ptrToGuyNoTypeData);
+        float jumpOut = 0.0f;
 
-            auto jumpOut =
-                classData->Invoke<float>(
-                    // class ptr
-                    ptrToGuyNoTypeData, 
-                    // function name
-                    std::string("DoJump"), 
-                    // Args
-                    332211.0f, std::string("Test"));
-        }
+        SPP_LOG(LOG_REFLECTION, LOG_INFO, "Call invoke: previous jumpOut %f", jumpOut);
+
+        jumpOut =
+            classData->Invoke<float>(
+                // class ptr
+                ptrToGuyNoTypeData, 
+                // function name
+                std::string("DoJump"), 
+                // Args
+                332211.0f, std::string("Test"));
+
+        SPP_LOG(LOG_REFLECTION, LOG_INFO, " - post invoke: jumpOut %f", jumpOut);
     }
 }
