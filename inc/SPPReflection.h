@@ -459,6 +459,12 @@ CPPType get_type<void>() noexcept
     return val;
 }
 
+////////////////////////////////////////////
+//
+// PROPRTIES
+// 
+////////////////////////////////////////////
+
 class ReflectedProperty
 {
     template<typename Class_Type>
@@ -476,46 +482,6 @@ public:
     const auto& GetName() const { return _name; }
     auto GetPropOffset() const { return _propOffset; }
 
-    virtual void LogOut(void* structAddr) {}
-};
-
-
-
-struct Argument
-{
-    CPPType type;
-    void* reference = nullptr;
-
-    Argument() {}
-    Argument(CPPType InType, void* InRef) : type(InType), reference(InRef) {}
-
-    template<typename T>
-    T* GetValue() const
-    {
-        return (T*)reference;
-    }
-};
-
-
-class ReflectedMethod
-{
-    template<typename Class_Type>
-    friend struct ClassBuilder;
-
-protected:
-    std::string _name;
-
-    CPPType _type;
-    CPPType _returnType;
-    std::vector< CPPType > _propertyTypes;
-    std::function<void(void*, Argument &, const std::vector< Argument >&)> _method;
-
-public:
-    const auto& GetName() const { return _name; }
-    const auto& GetCaller() const { return _method; }
-    const auto& GetArgTypes() const { return _propertyTypes; }
-    const auto& GetReturnType() const { return _returnType; }
-    
     virtual void LogOut(void* structAddr) {}
 };
 
@@ -543,7 +509,7 @@ public:
     TNumericalProperty() {}
     virtual ~TNumericalProperty() {}
 
-    T *AccessValue(void* structAddr)
+    T* AccessValue(void* structAddr)
     {
         return (T*)((uint8_t*)structAddr + _propOffset);
     }
@@ -553,8 +519,6 @@ public:
         SPP_LOG(LOG_REFLECTION, LOG_INFO, "Number: %s", std::to_string(*AccessValue(structAddr)).c_str());
     }
 };
-
-
 
 class DynamicArrayProperty : public ReflectedProperty
 {
@@ -581,7 +545,7 @@ public:
         for (size_t Iter = 0; Iter < totalSize; Iter++)
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "IDX: %zd", Iter);
-            _inner->LogOut(_type.GetTypeData()->arraymanipulator->Element(arrayAddr, (int32_t) Iter));
+            _inner->LogOut(_type.GetTypeData()->arraymanipulator->Element(arrayAddr, (int32_t)Iter));
         }
     }
 };
@@ -621,6 +585,56 @@ public:
     virtual ~UniquePtrProperty() {}
 };
 
+
+////////////////////////////////////////////
+//
+// METHODS
+// 
+////////////////////////////////////////////
+
+struct Argument
+{
+    CPPType type;
+    void* reference = nullptr;
+
+    Argument() {}
+    Argument(CPPType InType, void* InRef) : type(InType), reference(InRef) {}
+
+    template<typename T>
+    T* GetValue() const
+    {
+        return (T*)reference;
+    }
+};
+
+class ReflectedMethod
+{
+    template<typename Class_Type>
+    friend struct ClassBuilder;
+
+protected:
+    std::string _name;
+
+    CPPType _type;
+    CPPType _returnType;
+    std::vector< CPPType > _propertyTypes;
+    std::function<void(void*, Argument &, const std::vector< Argument >&)> _method;
+
+public:
+    const auto& GetName() const { return _name; }
+    const auto& GetCaller() const { return _method; }
+    const auto& GetArgTypes() const { return _propertyTypes; }
+    const auto& GetReturnType() const { return _returnType; }
+    
+    virtual void LogOut(void* structAddr) {}
+};
+
+
+////////////////////////////////////////////
+//
+// Structure/Class
+// 
+////////////////////////////////////////////
 
 class ReflectedStruct
 {
@@ -713,6 +727,7 @@ public:
     }
 };
 
+// For nested structures
 class StructProperty : public ReflectedProperty
 {
 public:
@@ -763,7 +778,6 @@ inline void invoke(ClassType* BaseObject, Func func_ptr, Argument& retArg, const
     else
     {
         SE_ASSERT(retArg.reference);
-
         *(return_type*)retArg.reference = (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
     }
 }
@@ -785,7 +799,7 @@ struct ClassBuilder
         }
         else
         {
-
+            //TODO check link order at startup? or each go?
         }
     }
 
@@ -916,7 +930,7 @@ struct ClassBuilder
             auto classVal = ((Class_Type*)InClassAddr);
             if (arguments.size() == function_traits<Func>::arg_count)
             {
-                invoke(classVal, method, retArg, arguments, integer_sequence{});// 1.1f, std::string("tt"));
+                invoke(classVal, method, retArg, arguments, integer_sequence{});
             }
         };
                 
