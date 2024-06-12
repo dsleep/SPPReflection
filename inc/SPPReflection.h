@@ -29,6 +29,7 @@
     #define SPP_REFLECTION_API 
 #endif
 
+
 //////////////////////////////////////////////////
 //UGLY COPIES FROM OTHER CORE HEADERS
 //////////////////////////////////////////////////
@@ -42,23 +43,25 @@
 #pragma warning( disable : 4100 )
 #endif
 
-
-
-
 #define SPP_CAT_IMPL(a, b) a##b
 #define SPP_CAT(a, b) SPP_CAT_IMPL(a, b)
+
+template <typename T>
+struct TRegisterStruct {};
 
 #define SPP_AUTOREG_START                                                           \
 namespace SPP_CAT(spp_auto_reg_namespace_, __LINE__)								\
 {																					\
-    struct RegStruct																\
+    struct RegStruct {};                                                            \
+    template<>                                                                      \
+    struct TRegisterStruct< RegStruct >                                             \
     {                                                                               \
-        RegStruct() {
+        TRegisterStruct() {
 
 #define SPP_AUTOREG_END		\
 		} \
 	};						\
-	const static RegStruct _reg;			\
+	const static TRegisterStruct< RegStruct > _reg;			\
 }
 
 #define NO_COPY_ALLOWED(ClassName)						\
@@ -101,86 +104,46 @@ std::string get_type_name() noexcept
     return std::string(f<T>(), get_size(f<T>()));
 }
 
-struct ArrayManipulator
+#include "SPPRDataManipulators.h"
+#include "SPPRTypeTraits.h"
+
+struct DataAllocation
 {
-    virtual void* Element(void* ArrayPtr, int32_t Idx) = 0;
-    virtual size_t Size(void *ArrayPtr) = 0;
-    virtual void Resize(void *ArrayPtr, size_t NewSize) = 0;
+    virtual void* Construct() = 0;
 };
+
 
 template<typename T>
-struct TArrayManipulator : public ArrayManipulator
+struct TDataAllocation : public DataAllocation
 {
-    auto &AsType(void* ArrayPtr)
+    virtual void* Construct()
     {
-        return *(T*)ArrayPtr;
-    }
-    virtual void* Element(void* ArrayPtr, int32_t Idx) override
-    {
-        return &AsType(ArrayPtr)[Idx];
-    }
-    virtual size_t Size(void* ArrayPtr) override
-    {
-        return AsType(ArrayPtr).size();
-    }
-    virtual void Resize(void* ArrayPtr, size_t NewSize) override
-    {
-        AsType(ArrayPtr).resize(NewSize);
+        return (new T());
     }
 };
 
-struct WrapManipulator
-{
-    virtual bool IsValid(void* ValuePtr) = 0;
-    virtual void* GetValue(void* ValuePtr) = 0;
-    virtual void Clear(void* ValuePtr) = 0;
-};
-
-template<typename T>
-struct TWrapManipulator : public WrapManipulator
-{
-    auto& AsType(void* ValuePtr)
-    {
-        return *(T*)ValuePtr;
-    }
-    virtual bool IsValid(void* ValuePtr) override
-    {
-        if (AsType(ValuePtr))
-        {
-            return true;
-        }
-
-        return false;
-    }
-    virtual void* GetValue(void* ValuePtr) override
-    {
-        return AsType(ValuePtr).get();
-    }
-    virtual void Clear(void* ValuePtr) override
-    {
-        AsType(ValuePtr).reset();
-    }
-};
-
-struct type_data
+struct SPP_REFLECTION_API type_data
 {
     std::string name;
 
     std::size_t get_sizeof;
     std::size_t get_pointer_dimension;
 
-    std::unique_ptr< ArrayManipulator > arraymanipulator;
-    std::unique_ptr< WrapManipulator > wrapmanipulator;
+    std::unique_ptr< DataAllocation > dataAllocation;
+    std::unique_ptr< ArrayManipulator > arrayManipulator;
+    std::unique_ptr< WrapManipulator > wrapManipulator;
 
     std::unique_ptr< class ReflectedStruct > structureRef;
+
+    bool bInfoSet = false;
+
+    bool IsFullyFormed() const;
 };
 
 
 class SPP_REFLECTION_API CPPType
 {
 public:
-    typedef uintptr_t type_id;
-
     CPPType() : _typeData(nullptr) {}
 
     CPPType(type_data * data) noexcept
@@ -216,163 +179,64 @@ private:
 /////////////////////////////////////////////////////////////////////////////////
 
 
-template<typename...T>
-struct type_list
-{
-    static constexpr auto size = sizeof...(T); //!< The amount of template parameters
-};
+
 
 #define TYPE_LIST(...) type_list<__VA_ARGS__>
+
+
 #define PARENT_CLASS(parentC) using parent_class = parentC;
 
-template <typename T>
-concept HasParentClass = requires
-{
-    typename T::parent_class;
-};
-
-template <class T>
-struct is_vector {
-    static constexpr bool value = false;
-};
-template <class T, class A>
-struct is_vector<std::vector<T, A> > {
-    static constexpr bool value = true;
-};
+#define BEFRIEND_REFL_STRUCTS       \
+    template<typename Class_Type>   \
+    friend struct ClassBuilder;     \
+    template <typename T>           \
+    friend struct TRegisterStruct;
 
 
-template <class T>
-struct is_unique_ptr {
-    static constexpr bool value = false;
-};
-template <class T, class D>
-struct is_unique_ptr<std::unique_ptr<T, D> > {
-    static constexpr bool value = true;
-};
+#define ENABLE_VF_REFL \
+    virtual CPPType GetCPPType() const { \
+        using non_ref_type = typename std::remove_cv<typename std::remove_reference< decltype(*this) >::type>::type; \
+        return get_type<non_ref_type>(); \
+    };
+
+#define ENABLE_REFLECTION \
+    BEFRIEND_REFL_STRUCTS \
+    ENABLE_VF_REFL 
+
+#define ENABLE_REFLECTION_C(ParentClass) \
+    ENABLE_REFLECTION \
+    PARENT_CLASS(ParentClass) 
 
 
-template <typename T>
-concept IsSTLVector = is_vector<T>::value;
+#define REFL_CLASS_START(InClass)       \
+    {                                   \
+    using _REF_CC = InClass;            \
+    build_class<_REF_CC>(#InClass)
 
-template <typename T>
-concept IsUniquePtr = is_unique_ptr<T>::value;
+#define RC_ADD_PROP(InProp) \
+    .property( #InProp, &_REF_CC::InProp )
 
+#define RC_ADD_METHOD(InMethod) \
+    .method( #InMethod, &_REF_CC::InMethod )
 
+#define REFL_CLASS_END ; } \
+    
 
-template<typename T, typename Enable = void>
-struct get_size_of
-{
-    static constexpr std::size_t value()
-    {
-        return sizeof(T);
-    }
-};
+//
+//#define ENABLE_REFLECTION() \
+//    BEFRIEND_REFL_STRUCTS() \
+//    ENABLE_VF_REFL() \
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename T>
-struct get_size_of<T, std::enable_if_t<std::is_same<T, void>::value || std::is_function<T>::value>>
-{
-    static constexpr std::size_t value()
-    {
-        return 0;
-    }
-};
 
-template<typename T>
-struct is_function_ptr : std::integral_constant<bool, std::is_pointer<T>::value&&
-    std::is_function<std::remove_pointer<T>>::value>
-{
-};
 
 
 /////////////////
 /////////////////////////////////////////////////////////////////////////////////////
  /////////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-struct function_traits : function_traits< decltype(&T::operator()) > {};
 
-template<typename R, typename... Args>
-struct function_traits<R(Args...)>
-{
-    static constexpr size_t arg_count = sizeof...(Args);
-       
-    using return_type = R;
-    using arg_types = type_list<Args...>;
-    using arg_tuple = std::tuple<Args...>;
-};
-
-template<typename R, typename... Args>
-struct function_traits<R(*)(Args...)> : function_traits<R(Args...)> { };
-
-template<typename R, typename... Args>
-struct function_traits<R(&)(Args...)> : function_traits<R(Args...)> { };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...)> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) const> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) volatile> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) const volatile> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename... Args>
-struct function_traits<R(*)(Args...) noexcept> : function_traits<R(Args...)> { };
-
-template<typename R, typename... Args>
-struct function_traits<R(&)(Args...) noexcept> : function_traits<R(Args...)> { };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) noexcept> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) const noexcept> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) volatile noexcept> : function_traits<R(Args...)> { using class_type = C; };
-
-template<typename R, typename C, typename... Args>
-struct function_traits<R(C::*)(Args...) const volatile noexcept> : function_traits<R(Args...)> { using class_type = C; };
-
-/////////////////////////////////////////////////////////////////////////////////////
-// use it like e.g:
-// param_types<F, 0>::type
-
-template<typename F, size_t Index>
-struct param_types
-{
-    using type = typename std::tuple_element<Index, typename function_traits<F>::arg_tuple>::type;
-};
-
-template<typename F, size_t Index>
-using param_types_t = typename param_types<F, Index>::type;
-
-/////////////////////////////////////////////////////////////////////////////////////
-// pointer_count<T>::value Returns the number of pointers for a type
-// e.g. pointer_count<char**>::value => 2
-//      pointer_count<char*>::value  => 1
-//      pointer_count<char>::value   => 0
-template<typename T, typename Enable = void>
-struct pointer_count_impl
-{
-    static constexpr std::size_t size = 0;
-};
-
-template<typename T>
-struct pointer_count_impl<T, std::enable_if_t<std::is_pointer<T>::value &&
-    !is_function_ptr<T>::value &&
-    !std::is_member_pointer<T>::value>>
-{
-    static constexpr std::size_t size = pointer_count_impl< std::remove_pointer<T> >::size + 1;
-};
-
-template<typename T>
-using pointer_count = std::integral_constant<std::size_t, pointer_count_impl<T>::size>;
 
 template<typename T>
 std::unique_ptr<type_data> make_type_data()
@@ -390,13 +254,13 @@ std::unique_ptr<type_data> make_type_data()
     if constexpr (IsSTLVector<T>)
     {
         //value_type
-        obj->arraymanipulator = std::make_unique< TArrayManipulator< T > >();
+        obj->arrayManipulator = std::make_unique< TArrayManipulator< T > >();
     }
 
     if constexpr (IsUniquePtr<T>)
     {
         //element_type
-        obj->wrapmanipulator = std::make_unique< TWrapManipulator< T > >();
+        obj->wrapManipulator = std::make_unique< TWrapManipulator< T > >();
     }
 
     return obj;
@@ -546,16 +410,16 @@ public:
 
     virtual void LogOut(void* structAddr) override
     {
-        SE_ASSERT(_type.GetTypeData()->arraymanipulator);
+        SE_ASSERT(_type.GetTypeData()->arrayManipulator);
 
         auto arrayAddr = AccessValue(structAddr);
-        auto totalSize = _type.GetTypeData()->arraymanipulator->Size(arrayAddr);
+        auto totalSize = _type.GetTypeData()->arrayManipulator->Size(arrayAddr);
 
         SPP_LOG(LOG_REFLECTION, LOG_INFO, "ARRAY: size: %zd", totalSize);
         for (size_t Iter = 0; Iter < totalSize; Iter++)
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "IDX: %zd", Iter);
-            _inner->LogOut(_type.GetTypeData()->arraymanipulator->Element(arrayAddr, (int32_t)Iter));
+            _inner->LogOut(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter));
         }
     }
 };
@@ -580,14 +444,14 @@ public:
 
     virtual void LogOut(void* structAddr) override
     {
-        SE_ASSERT(_type.GetTypeData()->wrapmanipulator);
+        SE_ASSERT(_type.GetTypeData()->wrapManipulator);
 
         auto uniquePtrAddr = AccessValue(structAddr);
 
-        if (_type.GetTypeData()->wrapmanipulator->IsValid(uniquePtrAddr))
+        if (_type.GetTypeData()->wrapManipulator->IsValid(uniquePtrAddr))
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "UNIQUE_PTR: ");
-            _inner->LogOut(_type.GetTypeData()->wrapmanipulator->GetValue(uniquePtrAddr));
+            _inner->LogOut(_type.GetTypeData()->wrapManipulator->GetValue(uniquePtrAddr));
         }
     }
 
@@ -825,6 +689,8 @@ struct ClassBuilder
     {
         CPPType classType = get_type< Class_Type >();
         classType.GetTypeData()->structureRef = std::move(_class);
+
+        classType.GetTypeData()->dataAllocation = std::make_unique< TDataAllocation< Class_Type > >();
     }
 
     template<typename T, typename ClassSet = Class_Type>
@@ -958,6 +824,6 @@ struct ClassBuilder
 
 template<typename Class_Type>
 ClassBuilder< Class_Type> build_class(std::string_view name)
-{    
+{   
     return ClassBuilder< Class_Type>();
 }

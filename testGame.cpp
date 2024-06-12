@@ -28,6 +28,8 @@ struct PlayerFighters
 
 struct GuyTest : public ObjectBase
 {
+    ENABLE_REFLECTION;
+
     float X;
     std::vector< int32_t > timeStamps;
     std::string GuyName;
@@ -39,53 +41,67 @@ struct GuyTest : public ObjectBase
         return X;
     }
 
-    virtual CPPType GetCPPType() const override { return get_type < GuyTest >(); }
 };
-
-
 
 SPP_AUTOREG_START
 
-    build_class<PlayerFighters>("PlayerFighters")
-        .property("name", &PlayerFighters::name)
-        .property("health", &PlayerFighters::health);
+    REFL_CLASS_START(PlayerFighters)
 
-    build_class<PlayerData>("PlayerData")
-        .property("GUID", &PlayerData::GUID)
-        .property("TAG", &PlayerData::TAG);
+        RC_ADD_PROP(name)
+        RC_ADD_PROP(health)
 
-    build_class<GuyTest>("GuyTest")
-        .property("X", &GuyTest::X)
-        .property("timeStamps", &GuyTest::timeStamps)
-        .property("GuyName", &GuyTest::GuyName)
+    REFL_CLASS_END
 
-        .method("DoJump", &GuyTest::DoJump);
-    
+    REFL_CLASS_START(PlayerData)
+
+        RC_ADD_PROP(GUID)
+        RC_ADD_PROP(TAG)
+
+    REFL_CLASS_END
+
+
+    REFL_CLASS_START(GuyTest)
+
+        RC_ADD_PROP(X)
+        RC_ADD_PROP(timeStamps)
+        RC_ADD_PROP(GuyName)
+
+        RC_ADD_METHOD(DoJump)
+
+    REFL_CLASS_END
+
 SPP_AUTOREG_END
+
 
 
 struct SuperGuy : public GuyTest
 {
-    PARENT_CLASS(GuyTest)
+    ENABLE_REFLECTION_C(GuyTest);
+
 
     int32_t health;
     SceneParent* parent = nullptr;
     PlayerData data;
+
+protected:
+
     std::unique_ptr< std::string > HitMe;
     std::vector< std::unique_ptr< PlayerFighters > >  Players;
 
-    virtual CPPType GetCPPType() const override { return get_type < SuperGuy >(); }
 };
 
 //test split auto reg
 SPP_AUTOREG_START
 
-    build_class<SuperGuy>("SuperGuy")
-        .property("health", &SuperGuy::health)
-        .property("parent", &SuperGuy::parent)
-        .property("data", &SuperGuy::data)
-        .property("HitMe", &SuperGuy::HitMe)
-        .property("Players", &SuperGuy::Players);
+    REFL_CLASS_START(SuperGuy)
+
+        RC_ADD_PROP(health)
+        RC_ADD_PROP(parent)
+        RC_ADD_PROP(data)
+        RC_ADD_PROP(HitMe)
+        RC_ADD_PROP(Players)
+
+    REFL_CLASS_END
         
 SPP_AUTOREG_END
 
@@ -102,6 +118,8 @@ int main()
     guy.health = 123;
     guy.GuyName = "yoyoyo";
     guy.X = 321.1f;
+
+#if 0
     guy.Players.push_back(std::unique_ptr<PlayerFighters>(
         new PlayerFighters{
             "JOJO",
@@ -113,6 +131,7 @@ int main()
             0.123f
         }));
     guy.HitMe = std::make_unique< std::string >("AHHHHHHH 123");
+#endif
 
     {        
         // cleanse it of any type
@@ -120,6 +139,9 @@ int main()
             
         auto foundType = ((ObjectBase*)ptrToGuyNoTypeData)->GetCPPType();
         auto classData = foundType.GetTypeData()->structureRef.get();
+
+        auto madeNew = (ObjectBase*)foundType.GetTypeData()->dataAllocation->Construct();
+
         classData->DumpString(ptrToGuyNoTypeData);
 
         float jumpOut = 0.0f;

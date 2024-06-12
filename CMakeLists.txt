@@ -35,6 +35,9 @@ target_compile_definitions(SPPReflection
 target_sources(SPPReflection
 	PRIVATE
 		"${CMAKE_CURRENT_LIST_DIR}/inc/SPPReflection.h"
+		"${CMAKE_CURRENT_LIST_DIR}/inc/SPPRDataManipulators.h"
+		"${CMAKE_CURRENT_LIST_DIR}/inc/SPPRTypeTraits.h"
+
 		"${CMAKE_CURRENT_LIST_DIR}/src/SPPReflection.cpp"
 		)
 
