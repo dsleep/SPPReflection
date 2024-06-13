@@ -7,6 +7,8 @@
 
 #include "SPPReflection.h"
 
+using namespace SPP;
+
 struct SceneParent : public ObjectBase
 {
     int32_t matrix;
@@ -140,7 +142,7 @@ int main()
         auto foundType = ((ObjectBase*)ptrToGuyNoTypeData)->GetCPPType();
         auto classData = foundType.GetTypeData()->structureRef.get();
 
-        auto madeNew = (ObjectBase*)foundType.GetTypeData()->dataAllocation->Construct();
+        //auto madeNew = (ObjectBase*)foundType.GetTypeData()->dataAllocation->Construct();
 
         classData->DumpString(ptrToGuyNoTypeData);
 

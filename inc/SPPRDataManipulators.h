@@ -11,65 +11,67 @@
 #include <functional>
 #include <memory>
 
-
-
-struct ArrayManipulator
+namespace SPP
 {
-    virtual void* Element(void* ArrayPtr, int32_t Idx) = 0;
-    virtual size_t Size(void* ArrayPtr) = 0;
-    virtual void Resize(void* ArrayPtr, size_t NewSize) = 0;
-};
 
-template<typename T>
-struct TArrayManipulator : public ArrayManipulator
-{
-    auto& AsType(void* ArrayPtr)
+    struct ArrayManipulator
     {
-        return *(T*)ArrayPtr;
-    }
-    virtual void* Element(void* ArrayPtr, int32_t Idx) override
-    {
-        return &AsType(ArrayPtr)[Idx];
-    }
-    virtual size_t Size(void* ArrayPtr) override
-    {
-        return AsType(ArrayPtr).size();
-    }
-    virtual void Resize(void* ArrayPtr, size_t NewSize) override
-    {
-        AsType(ArrayPtr).resize(NewSize);
-    }
-};
+        virtual void* Element(void* ArrayPtr, int32_t Idx) = 0;
+        virtual size_t Size(void* ArrayPtr) = 0;
+        virtual void Resize(void* ArrayPtr, size_t NewSize) = 0;
+    };
 
-struct WrapManipulator
-{
-    virtual bool IsValid(void* ValuePtr) = 0;
-    virtual void* GetValue(void* ValuePtr) = 0;
-    virtual void Clear(void* ValuePtr) = 0;
-};
-
-template<typename T>
-struct TWrapManipulator : public WrapManipulator
-{
-    auto& AsType(void* ValuePtr)
+    template<typename T>
+    struct TArrayManipulator : public ArrayManipulator
     {
-        return *(T*)ValuePtr;
-    }
-    virtual bool IsValid(void* ValuePtr) override
-    {
-        if (AsType(ValuePtr))
+        auto& AsType(void* ArrayPtr)
         {
-            return true;
+            return *(T*)ArrayPtr;
         }
+        virtual void* Element(void* ArrayPtr, int32_t Idx) override
+        {
+            return &AsType(ArrayPtr)[Idx];
+        }
+        virtual size_t Size(void* ArrayPtr) override
+        {
+            return AsType(ArrayPtr).size();
+        }
+        virtual void Resize(void* ArrayPtr, size_t NewSize) override
+        {
+            AsType(ArrayPtr).resize(NewSize);
+        }
+    };
 
-        return false;
-    }
-    virtual void* GetValue(void* ValuePtr) override
+    struct WrapManipulator
     {
-        return AsType(ValuePtr).get();
-    }
-    virtual void Clear(void* ValuePtr) override
+        virtual bool IsValid(void* ValuePtr) = 0;
+        virtual void* GetValue(void* ValuePtr) = 0;
+        virtual void Clear(void* ValuePtr) = 0;
+    };
+
+    template<typename T>
+    struct TWrapManipulator : public WrapManipulator
     {
-        AsType(ValuePtr).reset();
-    }
-};
+        auto& AsType(void* ValuePtr)
+        {
+            return *(T*)ValuePtr;
+        }
+        virtual bool IsValid(void* ValuePtr) override
+        {
+            if (AsType(ValuePtr))
+            {
+                return true;
+            }
+
+            return false;
+        }
+        virtual void* GetValue(void* ValuePtr) override
+        {
+            return AsType(ValuePtr).get();
+        }
+        virtual void Clear(void* ValuePtr) override
+        {
+            AsType(ValuePtr).reset();
+        }
+    };
+}
