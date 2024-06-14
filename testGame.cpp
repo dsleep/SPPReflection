@@ -90,6 +90,11 @@ protected:
     std::unique_ptr< std::string > HitMe;
     std::vector< std::unique_ptr< PlayerFighters > >  Players;
 
+public:
+
+    auto& GetHitMe() { return HitMe; }
+    auto& GetPlayers() { return Players; }
+
 };
 
 //test split auto reg
@@ -121,19 +126,18 @@ int main()
     guy.GuyName = "yoyoyo";
     guy.X = 321.1f;
 
-#if 0
-    guy.Players.push_back(std::unique_ptr<PlayerFighters>(
+    guy.GetPlayers().push_back(std::unique_ptr<PlayerFighters>(
         new PlayerFighters{
             "JOJO",
             12.23f
         }));
-    guy.Players.push_back(std::unique_ptr<PlayerFighters>(
+    guy.GetPlayers().push_back(std::unique_ptr<PlayerFighters>(
         new PlayerFighters{
             "James",
             0.123f
         }));
-    guy.HitMe = std::make_unique< std::string >("AHHHHHHH 123");
-#endif
+    guy.GetHitMe() = std::make_unique< std::string >("AHHHHHHH 123");
+
 
     {        
         // cleanse it of any type

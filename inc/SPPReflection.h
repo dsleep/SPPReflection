@@ -266,7 +266,7 @@ namespace SPP
     using is_complete_type = std::integral_constant<bool, !std::is_function<T>::value && !std::is_same<T, void>::value>;
 
     template<typename T> requires is_complete_type<T>::value
-        CPPType create_or_get_type() noexcept
+    CPPType create_or_get_type() noexcept
     {
         // when you get an error here, then the type was not completely defined
         // (a forward declaration is not enough because base_classes will not be found)
@@ -279,7 +279,7 @@ namespace SPP
     /////////////////////////////////////////////////////////////////////////////////
 
     template<typename T> requires (!is_complete_type<T>::value)
-        CPPType create_or_get_type() noexcept
+    CPPType create_or_get_type() noexcept
     {
         static const CPPType val = create_type(GetTypeCollection().Push(make_type_data<T>()));
         return val;
@@ -314,13 +314,33 @@ namespace SPP
 
     /////////////////////////////////////////////////////////////////////////////////
 
+    class ReflectedStruct;
+    class ReflectedProperty;
+
+    struct IVisitor
+    {
+        virtual bool EnterStructure(const ReflectedStruct& inValue) { return true; }
+        virtual void ExitStructure(const ReflectedStruct& inValue) {}
+
+        virtual bool EnterProprety(const ReflectedProperty& inValue) { return true; }
+        virtual void ExitProprety(const ReflectedProperty& inValue) { }
+
+        // ARRAY
+        virtual void BeginArray(const ReflectedProperty& inValue) { }
+        virtual void BeginArrayItem(int32_t InIdx) { }
+        virtual void EndArrayItem(int32_t InIdx) { }
+        virtual void EndArray(const ReflectedProperty& inValue) { }
+
+        virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
+    };
+
     ////////////////////////////////////////////
     //
     // PROPRTIES
     // 
     ////////////////////////////////////////////
 
-    class ReflectedProperty
+    class SPP_REFLECTION_API ReflectedProperty
     {
         BEFRIEND_REFL_STRUCTS
 
@@ -336,10 +356,11 @@ namespace SPP
         const auto& GetName() const { return _name; }
         auto GetPropOffset() const { return _propOffset; }
 
+        virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
         virtual void LogOut(void* structAddr) {}
     };
 
-    class StringProperty : public ReflectedProperty
+    class SPP_REFLECTION_API StringProperty : public ReflectedProperty
     {
     public:
         StringProperty() {}
@@ -348,6 +369,12 @@ namespace SPP
         std::string* AccessValue(void* structAddr)
         {
             return (std::string*)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            auto& value = *AccessValue(InStruct);
+
         }
 
         virtual void LogOut(void* structAddr) override
@@ -368,13 +395,19 @@ namespace SPP
             return (T*)((uint8_t*)structAddr + _propOffset);
         }
 
+        virtual void Visit(void* InStruct, IVisitor* InVisitor) 
+        {
+            auto& value = *AccessValue(InStruct);
+       
+        }
+
         virtual void LogOut(void* structAddr) override
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "Number: %s", std::to_string(*AccessValue(structAddr)).c_str());
         }
     };
 
-    class DynamicArrayProperty : public ReflectedProperty
+    class SPP_REFLECTION_API DynamicArrayProperty : public ReflectedProperty
     {
         BEFRIEND_REFL_STRUCTS
 
@@ -388,6 +421,24 @@ namespace SPP
         void* AccessValue(void* structAddr)
         {
             return (void*)((uint8_t*)structAddr + _propOffset);
+        }
+        
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            SE_ASSERT(_type.GetTypeData()->arrayManipulator);
+            
+            InVisitor->BeginArray(*this);
+
+            auto arrayAddr = AccessValue(InStruct);
+            auto totalSize = _type.GetTypeData()->arrayManipulator->Size(arrayAddr);
+            for (size_t Iter = 0; Iter < totalSize; Iter++)
+            {
+                InVisitor->BeginArrayItem(Iter);
+                _inner->Visit(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter), InVisitor);
+                InVisitor->EndArrayItem(Iter);
+            }
+
+            InVisitor->EndArray(*this);
         }
 
         virtual void LogOut(void* structAddr) override
@@ -412,6 +463,8 @@ namespace SPP
     public:
         ObjectProperty() {}
         virtual ~ObjectProperty() {}
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
     };
 
     class UniquePtrProperty : public ReflectedProperty
@@ -425,6 +478,16 @@ namespace SPP
         void* AccessValue(void* structAddr)
         {
             return (void*)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            SE_ASSERT(_type.GetTypeData()->wrapManipulator);
+            auto uniquePtrAddr = AccessValue(InStruct);
+            if (_type.GetTypeData()->wrapManipulator->IsValid(uniquePtrAddr))
+            {
+                _inner->Visit(_type.GetTypeData()->wrapManipulator->GetValue(uniquePtrAddr), InVisitor);
+            }
         }
 
         virtual void LogOut(void* structAddr) override
@@ -523,10 +586,9 @@ namespace SPP
                 curStruct = curStruct->_parent;
             }
         }
-
-        template<typename T>
-        void WalkStruct(T& InStruct, struct IStructureWalker* InWalker);
-
+                
+        void Visit(void* InStruct, struct IVisitor* InVisitor);
+                
         template<typename Ret, typename ...Args>
         Ret Invoke(void* structAddr, const std::string& MethodName, Args ...args) const
         {
@@ -605,6 +667,13 @@ namespace SPP
         void* AccessValue(void* structAddr)
         {
             return (void*)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            SE_ASSERT(_type.GetTypeData()->wrapManipulator);
+            auto newOffset = AccessValue(InStruct);
+            _struct->Visit(newOffset, InVisitor);
         }
 
         virtual void LogOut(void* structAddr) override
@@ -822,29 +891,14 @@ namespace SPP
     }
 
 
-    struct IStructureWalker
-    {
-        virtual bool EnterStructure(const ReflectedStruct& inValue) { return true; }
-        virtual void ExitStructure(const ReflectedStruct& inValue) {}
-
-        virtual bool EnterProprety(const ReflectedProperty& inValue) { return true; }
-        virtual void ExitProprety(const ReflectedProperty& inValue) { }
-
-        virtual void BeginArray(const ReflectedProperty& inValue) { }
-        virtual void BeginArrayItem(int32_t InIdx) { }
-        virtual void EndArrayItem(int32_t InIdx) { }
-        virtual void EndArray(const ReflectedProperty& inValue) { }
-
-        virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
-    };
+    
 
     //TODO FINISH THIS
-    template<typename T>
-    void ReflectedStruct::WalkStruct(T& InStruct, IStructureWalker* InWalker)
+    void ReflectedStruct::Visit(void* InStruct, IVisitor* InVisitor)
     {
         auto curStruct = this;
 
-        InWalker->EnterStructure(*this);
+        InVisitor->EnterStructure(*this);
 
         while (curStruct)
         {
@@ -852,16 +906,14 @@ namespace SPP
             {
                 SPP_LOG(LOG_REFLECTION, LOG_INFO, "NAME: %s OFFSET: %zd", curProp->GetName().c_str(), curProp->GetPropOffset());
 
-                InWalker->EnterProprety(*curProp);
-
-                curProp->LogOut(&InStruct);
-
-                InWalker->ExitProprety(*curProp);
+                InVisitor->EnterProprety(*curProp);
+                curProp->Visit(InStruct, InVisitor);
+                InVisitor->ExitProprety(*curProp);
             }
 
             curStruct = curStruct->_parent;
         }
 
-        InWalker->ExitStructure(*this);
+        InVisitor->ExitStructure(*this);
     }
 }
