@@ -74,7 +74,12 @@ SPP_AUTOREG_START
 
 SPP_AUTOREG_END
 
-
+enum class EGuyType
+{
+    BadGuy,
+    GoodGuy,
+    Unknown
+};
 
 struct SuperGuy : public GuyTest
 {
@@ -84,6 +89,8 @@ struct SuperGuy : public GuyTest
     int32_t health;
     SceneParent* parent = nullptr;
     PlayerData data;
+
+    EGuyType ourGuy = EGuyType::Unknown;
 
 protected:
 
@@ -97,8 +104,17 @@ public:
 
 };
 
+
+
+
 //test split auto reg
 SPP_AUTOREG_START
+
+    REFL_ENUM_START(EGuyType)
+        RC_ENUM_VALUE(EGuyType::BadGuy, "BadGuy")
+        RC_ENUM_VALUE(EGuyType::GoodGuy, "GoodGuy")
+        RC_ENUM_VALUE(EGuyType::Unknown, "Unknown")
+    REFL_ENUM_END
 
     REFL_CLASS_START(SuperGuy)
 
@@ -107,10 +123,13 @@ SPP_AUTOREG_START
         RC_ADD_PROP(data)
         RC_ADD_PROP(HitMe)
         RC_ADD_PROP(Players)
+        RC_ADD_PROP(ourGuy)
 
     REFL_CLASS_END
-        
+                
+
 SPP_AUTOREG_END
+
 
 int main()
 {
@@ -125,6 +144,7 @@ int main()
     guy.health = 123;
     guy.GuyName = "yoyoyo";
     guy.X = 321.1f;
+    guy.ourGuy = EGuyType::GoodGuy;
 
     guy.GetPlayers().push_back(std::unique_ptr<PlayerFighters>(
         new PlayerFighters{
@@ -148,7 +168,7 @@ int main()
 
         //auto madeNew = (ObjectBase*)foundType.GetTypeData()->dataAllocation->Construct();
 
-        classData->DumpString(ptrToGuyNoTypeData);
+        classData->LogOut(ptrToGuyNoTypeData);
 
         float jumpOut = 0.0f;
 

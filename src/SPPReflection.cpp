@@ -6,6 +6,24 @@
 
 namespace SPP
 {
+    static std::array< const char*, 10 > constexpr CONST_Indents = {
+            "",
+            "  ",
+            "    ",
+            "      ",
+            "        ",
+            "          ",
+            "            ",
+            "              ",
+            "                ",
+            "                  "
+    };
+
+    const char* GetIndent(uint8_t InValue)
+    {
+        return CONST_Indents[InValue % 10];
+    }
+
     namespace NameSKIP {
         static constexpr std::size_t skip_size_at_begin = 27;
         static constexpr std::size_t skip_size_at_end = 16;

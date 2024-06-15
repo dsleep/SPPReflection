@@ -18,6 +18,7 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include <array>
 
 #if _WIN32 && !defined(SPP_REFLECTION_STATIC)
     #ifdef SPP_REFLECTION_EXPORT
@@ -87,6 +88,9 @@ constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 
 #endif
 
+
+
+
 //////////////////////////////////////////////////
 //END UGLY COPIES
 //////////////////////////////////////////////////
@@ -130,9 +134,25 @@ constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 
 #define REFL_CLASS_END ; } \
 
+
+#define REFL_ENUM_START(InEnumType) \
+    { \
+        auto EnumCPP = get_type< InEnumType >(); \
+        auto newEnum = std::make_unique< EnumCollection >(); 
+
+#define RC_ENUM_VALUE(InEnumValue, InEnumString) \
+        newEnum->EnumValues.push_back({ #InEnumString, (int32_t)InEnumValue });
+
+#define REFL_ENUM_END \
+        EnumCPP.GetTypeData()->enumCollection = std::move(newEnum); \
+    }
+
 namespace SPP
 {
     SPP_REFLECTION_API const char* extract_type_signature(const char* signature) noexcept;
+
+    SPP_REFLECTION_API const char* GetIndent(uint8_t InValue);
+
 
     template<typename T>
     const char* f() noexcept
@@ -167,17 +187,35 @@ namespace SPP
         }
     };
 
+
+    struct EnumCollection
+    {
+        std::vector< std::tuple< std::string, int32_t  > > EnumValues;
+    };
+
     struct SPP_REFLECTION_API type_data
     {
         std::string name;
 
         std::size_t get_sizeof;
         std::size_t get_pointer_dimension;
+            
+        int32_t is_class = 1;
+        int32_t is_enum : 1;
+        int32_t is_array : 1;
+        int32_t is_const : 1;
+        int32_t is_volatile : 1;
+        int32_t is_pointer : 1;
+        int32_t is_arithmetic : 1;
+        int32_t is_function : 1;
+        int32_t is_member_object_pointer : 1;
+        int32_t is_member_function_pointer : 1;
+        int32_t is_reference : 1;
 
         std::unique_ptr< struct DataAllocation > dataAllocation;
         std::unique_ptr< struct ArrayManipulator > arrayManipulator;
         std::unique_ptr< struct WrapManipulator > wrapManipulator;
-
+        std::unique_ptr< struct EnumCollection > enumCollection;
         std::unique_ptr< class ReflectedStruct > structureRef;
     };
 
@@ -227,7 +265,19 @@ namespace SPP
                 {
                     get_type_name<T>(),
                     get_size_of<T>::value(),
-                    pointer_count<T>::value
+                    pointer_count<T>::value,
+
+                    std::is_class_v<T>, //is_class
+                    std::is_enum_v<T>, //is_enum
+                    std::is_array_v<T>, //is_array
+                    std::is_const_v<T>, //is_const
+                    std::is_volatile_v<T>, //is_volatile
+                    std::is_pointer_v<T>, //is_pointer
+                    std::is_arithmetic_v<T>, //is_arithmetic
+                    std::is_function_v<T>, //is_function_pointer
+                    std::is_member_object_pointer_v<T>, //is_member_object_pointer
+                    std::is_member_function_pointer_v<T>, //is_member_function_pointer
+                    std::is_lvalue_reference_v<T> //is_reference
                 }
             );
 
@@ -287,8 +337,7 @@ namespace SPP
 
     template<typename T>
     CPPType get_type() noexcept
-    {
-        //using non_ref_type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;    
+    { 
         return create_or_get_type<T>();
     }
 
@@ -357,7 +406,7 @@ namespace SPP
         auto GetPropOffset() const { return _propOffset; }
 
         virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
-        virtual void LogOut(void* structAddr) {}
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) {}
     };
 
     class SPP_REFLECTION_API StringProperty : public ReflectedProperty
@@ -377,9 +426,9 @@ namespace SPP
 
         }
 
-        virtual void LogOut(void* structAddr) override
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
         {
-            SPP_LOG(LOG_REFLECTION, LOG_INFO, "String: %s", AccessValue(structAddr)->c_str());
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sString: %s", GetIndent(Indent), AccessValue(structAddr)->c_str());
         }
     };
 
@@ -401,9 +450,43 @@ namespace SPP
        
         }
 
-        virtual void LogOut(void* structAddr) override
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
         {
-            SPP_LOG(LOG_REFLECTION, LOG_INFO, "Number: %s", std::to_string(*AccessValue(structAddr)).c_str());
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sNumber: %s", GetIndent(Indent), std::to_string(*AccessValue(structAddr)).c_str());
+        }
+    };
+
+    class SPP_REFLECTION_API EnumProperty : public ReflectedProperty
+    {
+    public:
+        EnumProperty() {}
+        virtual ~EnumProperty() {}
+
+        int32_t* AccessValue(void* structAddr)
+        {
+            return (int32_t*)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            auto& value = *AccessValue(InStruct);
+        }
+
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
+        {
+            auto curValue = *AccessValue(structAddr);
+
+            SE_ASSERT(_type.GetTypeData()->enumCollection);
+
+            for (const auto& pairs : _type.GetTypeData()->enumCollection->EnumValues)
+            {
+                if (curValue == std::get<1>(pairs))
+                {
+                    SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sEnum Value: %s", GetIndent(Indent), std::get<0>(pairs).c_str());
+                }
+            }            
+            
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sUnknown enum value", GetIndent(Indent));
         }
     };
 
@@ -441,18 +524,18 @@ namespace SPP
             InVisitor->EndArray(*this);
         }
 
-        virtual void LogOut(void* structAddr) override
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
         {
             SE_ASSERT(_type.GetTypeData()->arrayManipulator);
 
             auto arrayAddr = AccessValue(structAddr);
             auto totalSize = _type.GetTypeData()->arrayManipulator->Size(arrayAddr);
 
-            SPP_LOG(LOG_REFLECTION, LOG_INFO, "ARRAY: size: %zd", totalSize);
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sARRAY: size: %zd", GetIndent(Indent), totalSize);
             for (size_t Iter = 0; Iter < totalSize; Iter++)
             {
-                SPP_LOG(LOG_REFLECTION, LOG_INFO, "IDX: %zd", Iter);
-                _inner->LogOut(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter));
+                SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sIDX: %zd", GetIndent(Indent), Iter);
+                _inner->LogOut(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter), Indent+1);
             }
         }
     };
@@ -490,7 +573,7 @@ namespace SPP
             }
         }
 
-        virtual void LogOut(void* structAddr) override
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
         {
             SE_ASSERT(_type.GetTypeData()->wrapManipulator);
 
@@ -498,7 +581,7 @@ namespace SPP
 
             if (_type.GetTypeData()->wrapManipulator->IsValid(uniquePtrAddr))
             {
-                SPP_LOG(LOG_REFLECTION, LOG_INFO, "UNIQUE_PTR: ");
+                SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sUNIQUE_PTR: ", GetIndent(Indent));
                 _inner->LogOut(_type.GetTypeData()->wrapManipulator->GetValue(uniquePtrAddr));
             }
         }
@@ -547,7 +630,7 @@ namespace SPP
         const auto& GetArgTypes() const { return _propertyTypes; }
         const auto& GetReturnType() const { return _returnType; }
 
-        virtual void LogOut(void* structAddr) {}
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) {}
     };
 
 
@@ -571,7 +654,7 @@ namespace SPP
     public:
         ReflectedStruct() {}
 
-        virtual void DumpString(void* structAddr)
+        virtual void LogOut(void* structAddr, int8_t Indent = 0)
         {
             auto curStruct = this;
 
@@ -579,8 +662,8 @@ namespace SPP
             {
                 for (const auto& curProp : curStruct->_properties)
                 {
-                    SPP_LOG(LOG_REFLECTION, LOG_INFO, "NAME: %s OFFSET: %zd", curProp->GetName().c_str(), curProp->GetPropOffset());
-                    curProp->LogOut(structAddr);
+                    SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sNAME: %s OFFSET: %zd", GetIndent(Indent), curProp->GetName().c_str(), curProp->GetPropOffset());
+                    curProp->LogOut(structAddr, Indent+1);
                 }
 
                 curStruct = curStruct->_parent;
@@ -676,11 +759,11 @@ namespace SPP
             _struct->Visit(newOffset, InVisitor);
         }
 
-        virtual void LogOut(void* structAddr) override
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
         {
-            SPP_LOG(LOG_REFLECTION, LOG_INFO, "STRUCT PROP");
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sSTRUCT PROP", GetIndent(Indent));
             auto newOffset = AccessValue(structAddr);
-            _struct->DumpString(newOffset);
+            _struct->LogOut(newOffset, Indent+1);
         }
     };
 
@@ -779,6 +862,16 @@ namespace SPP
             else if constexpr (std::is_same_v<std::string, T>)
             {
                 auto newProp = std::make_unique< StringProperty >();
+                newProp->_name = InName;
+                newProp->_propOffset = calcOffset;
+                newProp->_type = get_type<T>();
+                return std::move(newProp);
+            }
+            else if constexpr (std::is_enum_v<T>)
+            {
+                static_assert(sizeof(T) == sizeof(int32_t));
+
+                auto newProp = std::make_unique< EnumProperty >();
                 newProp->_name = InName;
                 newProp->_propOffset = calcOffset;
                 newProp->_type = get_type<T>();
