@@ -775,6 +775,13 @@ namespace SPP
                 return {};
             }
         }
+
+        template<typename Ret, typename ...Args>
+        Ret Invoke_Constructor(Args&& ...args) const
+        {
+            static_assert( !std::is_same_v<Ret, void> );
+            return Invoke<Ret>(nullptr, std::string("constructor"), std::forward<Args>(args)...);
+        }
     };
 
     // For nested structures

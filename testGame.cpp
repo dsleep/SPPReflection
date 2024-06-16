@@ -176,10 +176,7 @@ int main()
         auto classData = foundType.GetTypeData()->structureRef.get();
 
         //int32_t valueSet = 1337;
-        auto newClass = classData->Invoke<SuperGuy*>(
-            nullptr,
-            // function name
-            std::string("constructor"),
+        auto newClass = classData->Invoke_Constructor<SuperGuy*>(
             // Args
             std::string("Te23232st"),
             132);
