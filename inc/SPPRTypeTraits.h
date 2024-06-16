@@ -51,7 +51,28 @@ namespace SPP
     template <typename T>
     concept IsUniquePtr = is_unique_ptr<T>::value;
 
+    /////////////////////////////////////////////////////////////////////////////////////////
+    // This trait will removes cv-qualifiers, pointers and reference from type T.
+    template<typename T, typename Enable = void>
+    struct raw_type
+    {
+        using type = std::remove_cv_t<T>;
+    };
 
+    //template<typename T> struct raw_type<T, std::enable_if_t<std::is_pointer<T>::value && !std::is_function_ptr<T>::value>>
+    //{
+    //    using type = typename raw_type< detail::remove_pointer_t<T>>::type;
+    //};
+
+    template<typename T> struct raw_type<T, std::enable_if_t<std::is_reference<T>::value> >
+    {
+        using type = typename raw_type< std::remove_reference_t<T> >::type;
+    };
+
+    template<typename T>
+    using raw_type_t = typename raw_type<T>::type;
+
+    ////////
 
     template<typename T, typename Enable = void>
     struct get_size_of

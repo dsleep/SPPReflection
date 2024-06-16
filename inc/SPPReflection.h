@@ -132,6 +132,9 @@ constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 #define RC_ADD_METHOD(InMethod) \
     .method( #InMethod, &_REF_CC::InMethod )
 
+#define RC_ADD_CONSTRUCTOR(...) \
+    .constructor< __VA_ARGS__ >()
+
 #define REFL_CLASS_END ; } \
 
 
@@ -200,17 +203,21 @@ namespace SPP
         std::size_t get_sizeof;
         std::size_t get_pointer_dimension;
             
-        int32_t is_class = 1;
-        int32_t is_enum : 1;
-        int32_t is_array : 1;
-        int32_t is_const : 1;
-        int32_t is_volatile : 1;
-        int32_t is_pointer : 1;
-        int32_t is_arithmetic : 1;
-        int32_t is_function : 1;
-        int32_t is_member_object_pointer : 1;
-        int32_t is_member_function_pointer : 1;
-        int32_t is_reference : 1;
+        uint32_t is_class = 1;
+        uint32_t is_enum : 1;
+        uint32_t is_array : 1;
+        uint32_t is_const : 1;
+        uint32_t is_volatile : 1;
+        uint32_t is_pointer : 1;
+        uint32_t is_arithmetic : 1;
+        uint32_t is_function : 1;
+        uint32_t is_member_object_pointer : 1;
+        uint32_t is_member_function_pointer : 1;
+        uint32_t is_reference : 1;
+        uint32_t is_lvalue_reference : 1;
+        uint32_t is_rvalue_reference : 1;
+        
+        type_data* raw_type_data = nullptr;
 
         std::unique_ptr< struct DataAllocation > dataAllocation;
         std::unique_ptr< struct ArrayManipulator > arrayManipulator;
@@ -241,9 +248,26 @@ namespace SPP
             return _typeData;
         }
 
+        bool ConvertibleTo(const CPPType& InValue) const
+        {
+            if (_typeData == InValue._typeData)
+            {
+                return true;
+            }
+
+            //NOT A GOOD CHEAT TODO, CREATE A CONVE
+            if (_typeData == InValue._typeData->raw_type_data ||
+                _typeData->raw_type_data == InValue._typeData)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         bool operator==(const CPPType& InValue) const
         {
-            return _typeData == InValue._typeData;
+            return (_typeData == InValue._typeData);
         }
         bool operator!=(const CPPType& InValue) const
         {
@@ -256,45 +280,9 @@ namespace SPP
         
     /////////////////////////////////////////////////////////////////////
 
+    //FORWARD DECLARE
     template<typename T>
-    std::unique_ptr<type_data> make_type_data()
-    {
-        auto obj = std::unique_ptr<type_data>
-            (
-                new type_data
-                {
-                    get_type_name<T>(),
-                    get_size_of<T>::value(),
-                    pointer_count<T>::value,
-
-                    std::is_class_v<T>, //is_class
-                    std::is_enum_v<T>, //is_enum
-                    std::is_array_v<T>, //is_array
-                    std::is_const_v<T>, //is_const
-                    std::is_volatile_v<T>, //is_volatile
-                    std::is_pointer_v<T>, //is_pointer
-                    std::is_arithmetic_v<T>, //is_arithmetic
-                    std::is_function_v<T>, //is_function_pointer
-                    std::is_member_object_pointer_v<T>, //is_member_object_pointer
-                    std::is_member_function_pointer_v<T>, //is_member_function_pointer
-                    std::is_lvalue_reference_v<T> //is_reference
-                }
-            );
-
-        if constexpr (IsSTLVector<T>)
-        {
-            //value_type
-            obj->arrayManipulator = std::make_unique< TArrayManipulator< T > >();
-        }
-
-        if constexpr (IsUniquePtr<T>)
-        {
-            //element_type
-            obj->wrapManipulator = std::make_unique< TWrapManipulator< T > >();
-        }
-
-        return obj;
-    }
+    std::unique_ptr<type_data> make_type_data();
 
     class SPP_REFLECTION_API TypeCollection
     {
@@ -307,6 +295,7 @@ namespace SPP
     public:
         TypeCollection();
         type_data* Push(std::unique_ptr<type_data>&& InData);
+        type_data* GetType(const char* InName);
     };
 
     SPP_REFLECTION_API TypeCollection& GetTypeCollection();
@@ -346,6 +335,55 @@ namespace SPP
     {
         static const CPPType val = create_type(nullptr);
         return val;
+    }
+
+    CPPType get_type_by_name(const char* InString);
+
+    template<typename T>
+    std::unique_ptr<type_data> make_type_data()
+    {
+        auto obj = std::unique_ptr<type_data>
+            (
+                new type_data
+                {
+                    get_type_name<T>(),
+                    get_size_of<T>::value(),
+                    pointer_count<T>::value,
+
+                    std::is_class_v<T>, //is_class
+                    std::is_enum_v<T>, //is_enum
+                    std::is_array_v<T>, //is_array
+                    std::is_const_v<T>, //is_const
+                    std::is_volatile_v<T>, //is_volatile
+                    std::is_pointer_v<T>, //is_pointer
+                    std::is_arithmetic_v<T>, //is_arithmetic
+                    std::is_function_v<T>, //is_function_pointer
+                    std::is_member_object_pointer_v<T>, //is_member_object_pointer
+                    std::is_member_function_pointer_v<T>, //is_member_function_pointer
+                    std::is_reference_v<T>, //is_reference
+                    std::is_lvalue_reference_v<T>, //is_lvalue_reference
+                    std::is_rvalue_reference_v<T> //is_rvalue_reference
+                }
+            );
+
+        if constexpr (IsSTLVector<T>)
+        {
+            //value_type
+            obj->arrayManipulator = std::make_unique< TArrayManipulator< T > >();
+        }
+
+        if constexpr (IsUniquePtr<T>)
+        {
+            //element_type
+            obj->wrapManipulator = std::make_unique< TWrapManipulator< T > >();
+        }
+
+        if constexpr (!std::is_same_v<T, typename raw_type<T>::type >)
+        {
+            obj->raw_type_data = get_type<typename raw_type<T>::type>().GetTypeData();
+        }
+
+        return obj;
     }
 
     /////////////////////////////////////////////////////////////////////////////////
@@ -606,10 +644,10 @@ namespace SPP
         Argument(CPPType InType, void* InRef) : type(InType), reference(InRef) {}
 
         template<typename T>
-        T* GetValue() const
+        T *GetValue() const
         {
             return (T*)reference;
-        }
+        }       
     };
 
     class ReflectedMethod
@@ -650,6 +688,7 @@ namespace SPP
 
         std::vector< std::unique_ptr<ReflectedProperty> > _properties;
         std::vector< std::unique_ptr<ReflectedMethod> > _methods;
+        std::vector< std::unique_ptr<ReflectedMethod> > _constructors;
 
     public:
         ReflectedStruct() {}
@@ -673,16 +712,18 @@ namespace SPP
         void Visit(void* InStruct, struct IVisitor* InVisitor);
                 
         template<typename Ret, typename ...Args>
-        Ret Invoke(void* structAddr, const std::string& MethodName, Args ...args) const
+        Ret Invoke(void* structAddr, const std::string& MethodName, Args&& ...args) const
         {
             auto curStruct = this;
 
             std::vector< Argument > arguments;
-            (arguments.push_back(Argument(get_type < decltype(args) >(), (void*)&args)), ...);
+            (arguments.push_back(Argument(get_type< std::remove_reference_t< decltype(args) > >(), (void*)&args)), ...);
 
             while (curStruct)
             {
-                for (const auto& method : curStruct->_methods)
+                const auto &methodsToIter = (structAddr ? curStruct->_methods : curStruct->_constructors);
+
+                for (const auto& method : methodsToIter)
                 {
                     if (method->GetName() == MethodName)
                     {
@@ -698,7 +739,8 @@ namespace SPP
                             bool bValid = true;
                             for (size_t Iter = 0; Iter < arguments.size(); Iter++)
                             {
-                                if (arguments[Iter].type != argsTypes[Iter])
+                                //TODO: needs to be a way to be more like std::is_convertible_v
+                                if ( !arguments[Iter].type.ConvertibleTo( argsTypes[Iter] ))
                                 {
                                     bValid = false;
                                     break;
@@ -796,8 +838,17 @@ namespace SPP
         else
         {
             SE_ASSERT(retArg.reference);
-            *(return_type*)retArg.reference = (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
+            *(return_type*)retArg.reference = (BaseObject->*func_ptr)
+                (*arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, arg_tuple> >::type >()...);
         }
+    }
+
+    template<typename ClassType, typename ArgTuple, std::size_t... Is>
+    inline void invoke_constructor(Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
+    {         
+        SE_ASSERT(retArg.reference);
+        *(ClassType**)retArg.reference = new ClassType(
+            *arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, ArgTuple> >::type >()...);
     }
 
 
@@ -975,6 +1026,37 @@ namespace SPP
 
             return *this;
         }
+
+        template<typename ...Args>
+        ClassBuilder& constructor()
+        {
+            constexpr size_t ArgCount = sizeof...(Args);
+            using arg_tuple = std::tuple<Args...>;
+            using integer_sequence = std::make_index_sequence< std::tuple_size_v<arg_tuple> >;
+
+            auto retType = get_type< Class_Type* >();
+            std::vector< CPPType > methodArgs;
+            (methodArgs.push_back(get_type< Args >()), ...);
+
+            auto callMethod = [](void* InClassAddr, Argument& retArg, const std::vector< Argument >& arguments) -> void
+            {
+                if (arguments.size() == ArgCount)
+                {
+                    invoke_constructor<Class_Type, arg_tuple>(retArg, arguments, integer_sequence{});
+                }
+            };
+
+            auto newMethod = std::make_unique< ReflectedMethod >();
+            newMethod->_name = "constructor";
+            newMethod->_returnType = retType;
+            newMethod->_propertyTypes = methodArgs;
+            newMethod->_type = get_type< type_list<Args...> >();
+            newMethod->_method = callMethod;
+
+            _class->_constructors.push_back(std::move(newMethod));
+
+            return *this;
+        }        
     };
 
     template<typename Class_Type>
@@ -982,9 +1064,6 @@ namespace SPP
     {
         return ClassBuilder< Class_Type>();
     }
-
-
-    
 
     //TODO FINISH THIS
     void ReflectedStruct::Visit(void* InStruct, IVisitor* InVisitor)

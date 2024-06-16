@@ -3,6 +3,7 @@
 // recognized in your jurisdiction.
 
 #include "SPPReflection.h"
+#include <mutex>
 
 namespace SPP
 {
@@ -43,7 +44,8 @@ namespace SPP
 
     struct TypeCollection::Impl
     {
-        std::vector< std::unique_ptr<type_data> > type_store;
+        //std::mutex storeAccess;
+        std::vector< std::unique_ptr<type_data> > type_store;        
     };
 
     TypeCollection::TypeCollection() : _impl(new Impl())
@@ -58,6 +60,14 @@ namespace SPP
         return outTypeData;
     }
 
+    type_data* TypeCollection::GetType(const char* InName)
+    {
+        for (const auto& curType : _impl->type_store)
+        {
+            return curType.get();
+        }
+        return nullptr;
+    }
 
     TypeCollection& GetTypeCollection()
     {
@@ -68,5 +78,10 @@ namespace SPP
     CPPType create_type(type_data* data) noexcept
     {
         return data ? CPPType(data) : CPPType();
+    }
+
+    CPPType get_type_by_name(const char* InString)
+    {
+        return CPPType(GetTypeCollection().GetType(InString));
     }
 }

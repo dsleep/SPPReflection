@@ -18,8 +18,8 @@ struct SceneParent : public ObjectBase
 
 struct PlayerData
 {
-    int GUID;
-    std::string TAG;
+    int GUID = -1;
+    std::string TAG = "tagnotset";
 };
 
 struct PlayerFighters
@@ -36,10 +36,10 @@ struct GuyTest : public ObjectBase
     std::vector< int32_t > timeStamps;
     std::string GuyName;
 
-    float DoJump(float howHigh, std::string TestOut)
+    float DoJump(float howHigh, std::string &TestOut)
     {
         X += howHigh;
-        //TestOut = "hello";
+        TestOut = "hello";
         return X;
     }
 
@@ -86,18 +86,25 @@ struct SuperGuy : public GuyTest
     ENABLE_REFLECTION_C(GuyTest);
 
 
-    int32_t health;
+    int32_t health = 0;
     SceneParent* parent = nullptr;
     PlayerData data;
 
     EGuyType ourGuy = EGuyType::Unknown;
 
-protected:
+protected:   
 
     std::unique_ptr< std::string > HitMe;
     std::vector< std::unique_ptr< PlayerFighters > >  Players;
 
 public:
+
+    SuperGuy() {}
+    SuperGuy(const std::string &InName, int32_t InHealth)
+    {
+        GuyName = InName;
+        health = InHealth;
+    }
 
     auto& GetHitMe() { return HitMe; }
     auto& GetPlayers() { return Players; }
@@ -124,6 +131,8 @@ SPP_AUTOREG_START
         RC_ADD_PROP(HitMe)
         RC_ADD_PROP(Players)
         RC_ADD_PROP(ourGuy)
+
+        RC_ADD_CONSTRUCTOR(const std::string &, int32_t)
 
     REFL_CLASS_END
                 
@@ -166,13 +175,22 @@ int main()
         auto foundType = ((ObjectBase*)ptrToGuyNoTypeData)->GetCPPType();
         auto classData = foundType.GetTypeData()->structureRef.get();
 
-        //auto madeNew = (ObjectBase*)foundType.GetTypeData()->dataAllocation->Construct();
+        //int32_t valueSet = 1337;
+        auto newClass = classData->Invoke<SuperGuy*>(
+            nullptr,
+            // function name
+            std::string("constructor"),
+            // Args
+            std::string("Te23232st"),
+            132);
 
         classData->LogOut(ptrToGuyNoTypeData);
 
         float jumpOut = 0.0f;
 
         SPP_LOG(LOG_REFLECTION, LOG_INFO, "Call invoke: previous jumpOut %f", jumpOut);
+
+        std::string stringREf("Test");
 
         jumpOut =
             classData->Invoke<float>(
@@ -181,7 +199,7 @@ int main()
                 // function name
                 std::string("DoJump"), 
                 // Args
-                332211.0f, std::string("Test"));
+                332211.0f, stringREf);
 
         SPP_LOG(LOG_REFLECTION, LOG_INFO, " - post invoke: jumpOut %f", jumpOut);
     }
