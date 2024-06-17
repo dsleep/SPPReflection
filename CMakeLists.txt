@@ -39,6 +39,9 @@ target_sources(SPPReflection
 		"${CMAKE_CURRENT_LIST_DIR}/inc/SPPRTypeTraits.h"
 
 		"${CMAKE_CURRENT_LIST_DIR}/src/SPPReflection.cpp"
+
+		"${CMAKE_CURRENT_LIST_DIR}/inc/SPPLogging.h"
+		"${CMAKE_CURRENT_LIST_DIR}/inc/SPPCore.h"
 		)
 
 target_include_directories(SPPReflection

@@ -97,6 +97,11 @@ protected:
     std::unique_ptr< std::string > HitMe;
     std::vector< std::unique_ptr< PlayerFighters > >  Players;
 
+    SuperGuy(const std::string& InName)
+    {
+        GuyName = InName;
+    }
+
 public:
 
     SuperGuy() {}
@@ -133,6 +138,7 @@ SPP_AUTOREG_START
         RC_ADD_PROP(ourGuy)
 
         RC_ADD_CONSTRUCTOR(const std::string &, int32_t)
+        RC_ADD_CONSTRUCTOR(const std::string&)
 
     REFL_CLASS_END
                 

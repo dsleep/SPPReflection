@@ -12,6 +12,9 @@
 
 #pragma once
 
+#include "SPPCore.h"
+#include "SPPLogging.h"
+
 #include <iostream>
 #include <vector>
 #include <list>
@@ -40,51 +43,7 @@
 
 #ifndef SPP_CORE_API
 
-// move to private include
-#ifdef _MSC_VER
-#pragma warning( disable : 4251 )
-#pragma warning( disable : 4275 )
-#pragma warning( disable : 4996 )
-//conversion from ... possible loss of data
-#pragma warning( disable : 4100 )
-#endif
 
-#define SPP_CAT_IMPL(a, b) a##b
-#define SPP_CAT(a, b) SPP_CAT_IMPL(a, b)
-
-template <typename T>
-struct TRegisterStruct {};
-
-#define SPP_AUTOREG_START                                                           \
-namespace SPP_CAT(spp_auto_reg_namespace_, __LINE__)								\
-{																					\
-    struct RegStruct {};                                                            \
-    template<>                                                                      \
-    struct TRegisterStruct< RegStruct >                                             \
-    {                                                                               \
-        TRegisterStruct() {
-
-#define SPP_AUTOREG_END		\
-		} \
-	};						\
-	const static TRegisterStruct< RegStruct > _reg;			\
-}
-
-#define NO_COPY_ALLOWED(ClassName)						\
-	ClassName(ClassName const&) = delete;				\
-	ClassName& operator=(ClassName const&) = delete;
-
-#define NO_MOVE_ALLOWED(ClassName)						\
-	ClassName(ClassName&&) = delete;					\
-	ClassName& operator=(ClassName&&) = delete;	
-
-
-#define SE_CRASH_BREAK *reinterpret_cast<int32_t*>(3) = 0xDEAD;
-#define SE_ASSERT(x) { if(!(x)) { SE_CRASH_BREAK; } } 
-#define SPP_LOG(cat,level,S, ...) printf(S, ##__VA_ARGS__); printf("\r\n")
-
-template <typename T, std::size_t N>
-constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 
 #endif
 
@@ -95,6 +54,11 @@ constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 //END UGLY COPIES
 //////////////////////////////////////////////////
 
+namespace SPP
+{
+    struct Argument;
+}
+
 #define TYPE_LIST(...) type_list<__VA_ARGS__>
 
 #define PARENT_CLASS(parentC) using parent_class = parentC;
@@ -103,8 +67,7 @@ constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
     template<typename Class_Type>   \
     friend struct ClassBuilder;     \
     template <typename T>           \
-    friend struct TRegisterStruct;
-
+    friend struct TRegisterStruct;  
 
 #define ENABLE_VF_REFL \
     virtual CPPType GetCPPType() const { \
@@ -152,10 +115,9 @@ constexpr std::size_t ARRAY_SIZE(const T(&)[N]) { return N; }
 
 namespace SPP
 {
+    SPP_REFLECTION_API extern LogEntry LOG_REFLECTION;
     SPP_REFLECTION_API const char* extract_type_signature(const char* signature) noexcept;
-
     SPP_REFLECTION_API const char* GetIndent(uint8_t InValue);
-
 
     template<typename T>
     const char* f() noexcept
@@ -243,7 +205,7 @@ namespace SPP
         {
         }
 
-        type_data* GetTypeData()
+        type_data* GetTypeData() const
         {
             return _typeData;
         }
@@ -264,6 +226,8 @@ namespace SPP
 
             return false;
         }
+
+        bool DerivedFrom(const CPPType& InValue) const;
 
         bool operator==(const CPPType& InValue) const
         {
@@ -708,6 +672,22 @@ namespace SPP
                 curStruct = curStruct->_parent;
             }
         }
+
+        bool DerivedFrom(const CPPType& InValue) const
+        {
+            auto curStruct = this;
+
+            while (curStruct)
+            {
+                if (curStruct->_type == InValue)
+                {
+                    return true;
+                }
+                curStruct = curStruct->_parent;
+            }
+
+            return false;
+        }
                 
         void Visit(void* InStruct, struct IVisitor* InVisitor);
                 
@@ -832,31 +812,7 @@ namespace SPP
         return types;
     }
 
-    template<typename ClassType, typename Func, std::size_t... Is>
-    inline void invoke(ClassType* BaseObject, Func func_ptr, Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
-    {
-        using arg_tuple = typename function_traits<Func>::arg_tuple;
-        using return_type = typename function_traits<Func>::return_type;
-
-        if constexpr (std::is_same<return_type, void>::value)
-        {
-            (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
-        }
-        else
-        {
-            SE_ASSERT(retArg.reference);
-            *(return_type*)retArg.reference = (BaseObject->*func_ptr)
-                (*arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, arg_tuple> >::type >()...);
-        }
-    }
-
-    template<typename ClassType, typename ArgTuple, std::size_t... Is>
-    inline void invoke_constructor(Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
-    {         
-        SE_ASSERT(retArg.reference);
-        *(ClassType**)retArg.reference = new ClassType(
-            *arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, ArgTuple> >::type >()...);
-    }
+    
 
 
     template<typename Class_Type>
@@ -894,6 +850,32 @@ namespace SPP
             classType.GetTypeData()->structureRef = std::move(_class);
 
             classType.GetTypeData()->dataAllocation = std::make_unique< TDataAllocation< Class_Type > >();
+        }
+
+        template<typename ClassType, typename Func, std::size_t... Is>
+        static inline void invoke(ClassType* BaseObject, Func func_ptr, Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
+        {
+            using arg_tuple = typename function_traits<Func>::arg_tuple;
+            using return_type = typename function_traits<Func>::return_type;
+
+            if constexpr (std::is_same<return_type, void>::value)
+            {
+                (BaseObject->*func_ptr)(*arguments[Is].GetValue< typename std::tuple_element_t<Is, arg_tuple> >()...);
+            }
+            else
+            {
+                SE_ASSERT(retArg.reference);
+                *(return_type*)retArg.reference = (BaseObject->*func_ptr)
+                    (*arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, arg_tuple> >::type >()...);
+            }
+        }
+
+        template<typename ClassType, typename ArgTuple, std::size_t... Is>
+        static inline void invoke_constructor(Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
+        {
+            SE_ASSERT(retArg.reference);
+            *(ClassType**)retArg.reference = new ClassType(
+                *arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, ArgTuple> >::type >()...);
         }
 
         template<typename T, typename ClassSet = Class_Type>
@@ -1094,5 +1076,5 @@ namespace SPP
         }
 
         InVisitor->ExitStructure(*this);
-    }
+    }    
 }

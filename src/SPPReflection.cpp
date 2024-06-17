@@ -7,6 +7,8 @@
 
 namespace SPP
 {
+    LogEntry LOG_REFLECTION("REFL");
+
     static std::array< const char*, 10 > constexpr CONST_Indents = {
             "",
             "  ",
@@ -83,5 +85,14 @@ namespace SPP
     CPPType get_type_by_name(const char* InString)
     {
         return CPPType(GetTypeCollection().GetType(InString));
+    }
+
+    bool CPPType::DerivedFrom(const CPPType& InValue) const
+    {
+        if (_typeData->structureRef)
+        {
+            return _typeData->structureRef->DerivedFrom(InValue);
+        }
+        return false;
     }
 }
