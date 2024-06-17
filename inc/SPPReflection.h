@@ -15,6 +15,8 @@
 #include "SPPCore.h"
 #include "SPPLogging.h"
 
+//#include "json/json.h"
+
 #include <iostream>
 #include <vector>
 #include <list>
@@ -36,29 +38,6 @@
 #include "SPPRDataManipulators.h"
 #include "SPPRTypeTraits.h"
 
-
-//////////////////////////////////////////////////
-//UGLY COPIES FROM OTHER CORE HEADERS
-//////////////////////////////////////////////////
-
-#ifndef SPP_CORE_API
-
-
-
-#endif
-
-
-
-
-//////////////////////////////////////////////////
-//END UGLY COPIES
-//////////////////////////////////////////////////
-
-namespace SPP
-{
-    struct Argument;
-}
-
 #define TYPE_LIST(...) type_list<__VA_ARGS__>
 
 #define PARENT_CLASS(parentC) using parent_class = parentC;
@@ -70,10 +49,12 @@ namespace SPP
     friend struct TRegisterStruct;  
 
 #define ENABLE_VF_REFL \
+    public: \
     virtual CPPType GetCPPType() const { \
         using non_ref_type = typename std::remove_cv<typename std::remove_reference< decltype(*this) >::type>::type; \
         return get_type<non_ref_type>(); \
-    };
+    }; \
+    protected: 
 
 #define ENABLE_REFLECTION \
     BEFRIEND_REFL_STRUCTS \
@@ -116,8 +97,11 @@ namespace SPP
 namespace SPP
 {
     SPP_REFLECTION_API extern LogEntry LOG_REFLECTION;
+
     SPP_REFLECTION_API const char* extract_type_signature(const char* signature) noexcept;
+
     SPP_REFLECTION_API const char* GetIndent(uint8_t InValue);
+
 
     template<typename T>
     const char* f() noexcept
@@ -126,10 +110,10 @@ namespace SPP
             __FUNCSIG__
         );
     }
-    
+
     SPP_REFLECTION_API std::size_t get_size(const char* s) noexcept;
     /////////////////////////////////////////////////////////////////////////////////
-    
+
     /////////////////////////////////////////////////////////////////////////////////
 
     template<typename T>
@@ -164,7 +148,7 @@ namespace SPP
 
         std::size_t get_sizeof;
         std::size_t get_pointer_dimension;
-            
+
         uint32_t is_class = 1;
         uint32_t is_enum : 1;
         uint32_t is_array : 1;
@@ -178,7 +162,7 @@ namespace SPP
         uint32_t is_reference : 1;
         uint32_t is_lvalue_reference : 1;
         uint32_t is_rvalue_reference : 1;
-        
+
         type_data* raw_type_data = nullptr;
 
         std::unique_ptr< struct DataAllocation > dataAllocation;
@@ -241,7 +225,7 @@ namespace SPP
     private:
         type_data* _typeData;
     };
-        
+
     /////////////////////////////////////////////////////////////////////
 
     //FORWARD DECLARE
@@ -269,7 +253,7 @@ namespace SPP
     using is_complete_type = std::integral_constant<bool, !std::is_function<T>::value && !std::is_same<T, void>::value>;
 
     template<typename T> requires is_complete_type<T>::value
-    CPPType create_or_get_type() noexcept
+        CPPType create_or_get_type() noexcept
     {
         // when you get an error here, then the type was not completely defined
         // (a forward declaration is not enough because base_classes will not be found)
@@ -282,7 +266,7 @@ namespace SPP
     /////////////////////////////////////////////////////////////////////////////////
 
     template<typename T> requires (!is_complete_type<T>::value)
-    CPPType create_or_get_type() noexcept
+        CPPType create_or_get_type() noexcept
     {
         static const CPPType val = create_type(GetTypeCollection().Push(make_type_data<T>()));
         return val;
@@ -290,7 +274,7 @@ namespace SPP
 
     template<typename T>
     CPPType get_type() noexcept
-    { 
+    {
         return create_or_get_type<T>();
     }
 
@@ -378,8 +362,8 @@ namespace SPP
 
         // ARRAY
         virtual void BeginArray(const ReflectedProperty& inValue) { }
-        virtual void BeginArrayItem(int32_t InIdx) { }
-        virtual void EndArrayItem(int32_t InIdx) { }
+        virtual void BeginArrayItem(size_t InIdx) { }
+        virtual void EndArrayItem(size_t InIdx) { }
         virtual void EndArray(const ReflectedProperty& inValue) { }
 
         virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
@@ -446,10 +430,10 @@ namespace SPP
             return (T*)((uint8_t*)structAddr + _propOffset);
         }
 
-        virtual void Visit(void* InStruct, IVisitor* InVisitor) 
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
-       
+
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -486,8 +470,8 @@ namespace SPP
                 {
                     SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sEnum Value: %s", GetIndent(Indent), std::get<0>(pairs).c_str());
                 }
-            }            
-            
+            }
+
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sUnknown enum value", GetIndent(Indent));
         }
     };
@@ -507,11 +491,11 @@ namespace SPP
         {
             return (void*)((uint8_t*)structAddr + _propOffset);
         }
-        
+
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             SE_ASSERT(_type.GetTypeData()->arrayManipulator);
-            
+
             InVisitor->BeginArray(*this);
 
             auto arrayAddr = AccessValue(InStruct);
@@ -537,7 +521,7 @@ namespace SPP
             for (size_t Iter = 0; Iter < totalSize; Iter++)
             {
                 SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sIDX: %zd", GetIndent(Indent), Iter);
-                _inner->LogOut(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter), Indent+1);
+                _inner->LogOut(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter), Indent + 1);
             }
         }
     };
@@ -608,10 +592,10 @@ namespace SPP
         Argument(CPPType InType, void* InRef) : type(InType), reference(InRef) {}
 
         template<typename T>
-        T *GetValue() const
+        T* GetValue() const
         {
             return (T*)reference;
-        }       
+        }
     };
 
     class ReflectedMethod
@@ -666,7 +650,7 @@ namespace SPP
                 for (const auto& curProp : curStruct->_properties)
                 {
                     SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sNAME: %s OFFSET: %zd", GetIndent(Indent), curProp->GetName().c_str(), curProp->GetPropOffset());
-                    curProp->LogOut(structAddr, Indent+1);
+                    curProp->LogOut(structAddr, Indent + 1);
                 }
 
                 curStruct = curStruct->_parent;
@@ -688,9 +672,9 @@ namespace SPP
 
             return false;
         }
-                
+
         void Visit(void* InStruct, struct IVisitor* InVisitor);
-                
+
         template<typename Ret, typename ...Args>
         Ret Invoke(void* structAddr, const std::string& MethodName, Args&& ...args) const
         {
@@ -701,7 +685,7 @@ namespace SPP
 
             while (curStruct)
             {
-                const auto &methodsToIter = (structAddr ? curStruct->_methods : curStruct->_constructors);
+                const auto& methodsToIter = (structAddr ? curStruct->_methods : curStruct->_constructors);
 
                 for (const auto& method : methodsToIter)
                 {
@@ -720,7 +704,7 @@ namespace SPP
                             for (size_t Iter = 0; Iter < arguments.size(); Iter++)
                             {
                                 //TODO: needs to be a way to be more like std::is_convertible_v
-                                if ( !arguments[Iter].type.ConvertibleTo( argsTypes[Iter] ))
+                                if (!arguments[Iter].type.ConvertibleTo(argsTypes[Iter]))
                                 {
                                     bValid = false;
                                     break;
@@ -759,7 +743,7 @@ namespace SPP
         template<typename Ret, typename ...Args>
         Ret Invoke_Constructor(Args&& ...args) const
         {
-            static_assert( !std::is_same_v<Ret, void> );
+            static_assert(!std::is_same_v<Ret, void>);
             return Invoke<Ret>(nullptr, std::string("constructor"), std::forward<Args>(args)...);
         }
     };
@@ -792,7 +776,7 @@ namespace SPP
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sSTRUCT PROP", GetIndent(Indent));
             auto newOffset = AccessValue(structAddr);
-            _struct->LogOut(newOffset, Indent+1);
+            _struct->LogOut(newOffset, Indent + 1);
         }
     };
 
@@ -835,23 +819,6 @@ namespace SPP
             }
         }
 
-        template<typename U = Class_Type> requires (!HasParentClass<U>)
-            void LinkParents() {}
-
-        ClassBuilder()
-        {
-            _class = std::make_unique< ReflectedStruct >();
-            LinkParents();
-        }
-
-        ~ClassBuilder()
-        {
-            CPPType classType = get_type< Class_Type >();
-            classType.GetTypeData()->structureRef = std::move(_class);
-
-            classType.GetTypeData()->dataAllocation = std::make_unique< TDataAllocation< Class_Type > >();
-        }
-
         template<typename ClassType, typename Func, std::size_t... Is>
         static inline void invoke(ClassType* BaseObject, Func func_ptr, Argument& retArg, const std::vector< Argument >& arguments, std::index_sequence<Is...>)
         {
@@ -876,6 +843,21 @@ namespace SPP
             SE_ASSERT(retArg.reference);
             *(ClassType**)retArg.reference = new ClassType(
                 *arguments[Is].GetValue< typename std::remove_reference< typename std::tuple_element_t<Is, ArgTuple> >::type >()...);
+        }
+
+        template<typename U = Class_Type> requires (!HasParentClass<U>)
+            void LinkParents() {}
+
+        ClassBuilder()
+        {
+            _class = std::make_unique< ReflectedStruct >();
+            LinkParents();
+        }
+
+        ~ClassBuilder()
+        {
+            CPPType classType = get_type< Class_Type >();
+            classType.GetTypeData()->structureRef = std::move(_class);
         }
 
         template<typename T, typename ClassSet = Class_Type>
@@ -1045,7 +1027,7 @@ namespace SPP
             _class->_constructors.push_back(std::move(newMethod));
 
             return *this;
-        }        
+        }
     };
 
     template<typename Class_Type>
@@ -1076,5 +1058,7 @@ namespace SPP
         }
 
         InVisitor->ExitStructure(*this);
-    }    
+    }
+
+    
 }

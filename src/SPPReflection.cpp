@@ -47,7 +47,7 @@ namespace SPP
     struct TypeCollection::Impl
     {
         //std::mutex storeAccess;
-        std::vector< std::unique_ptr<type_data> > type_store;        
+        std::vector< std::unique_ptr<type_data> > type_store;
     };
 
     TypeCollection::TypeCollection() : _impl(new Impl())
