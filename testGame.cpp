@@ -19,6 +19,24 @@ namespace SPP
         virtual ~ObjectBase() {}
     };
 
+    template<typename T> requires (std::is_arithmetic_v<T>)
+    void VisitValue(const ReflectedProperty& InProperty, T& InValue) 
+    {
+    
+    }
+
+    template<> 
+    void VisitValue< ObjectBase* >(const ReflectedProperty& InProperty, ObjectBase*& InValue) 
+    {
+
+    }
+
+    //template<>
+    //void VisitValue< std::string >(const ReflectedProperty& InProperty, std::string& InValue)
+    //{
+
+    //}
+
     class ObjectProperty : public ReflectedProperty
     {
 
@@ -27,7 +45,16 @@ namespace SPP
             ReflectedProperty(InName, InType, InOffset) {}
         virtual ~ObjectProperty() {}
 
-        virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
+        ObjectBase** AccessValue(void* structAddr)
+        {
+            return (ObjectBase**)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor) 
+        {
+            auto & value = *AccessValue(InStruct);
+            VisitValue(*this, value);
+        }
     };
 
     template<typename T, typename ClassSet> requires 
@@ -39,6 +66,8 @@ namespace SPP
         auto newProp = std::make_unique< ObjectProperty >(InName, curType, calcOffset);
         return std::move(newProp);
     }
+
+    
 }
 
 using namespace SPP;
@@ -183,6 +212,23 @@ SPP_AUTOREG_START
 SPP_AUTOREG_END
 
 
+struct IObjectVisitor : IVisitor
+{
+    virtual bool EnterStructure(const ReflectedStruct& inValue) { return true; }
+    virtual void ExitStructure(const ReflectedStruct& inValue) {}
+
+    virtual bool EnterProprety(const ReflectedProperty& inValue) { return true; }
+    virtual void ExitProprety(const ReflectedProperty& inValue) { }
+
+    // ARRAY
+    virtual void BeginArray(const ReflectedProperty& inValue) { }
+    virtual void BeginArrayItem(size_t InIdx) { }
+    virtual void EndArrayItem(size_t InIdx) { }
+    virtual void EndArray(const ReflectedProperty& inValue) { }
+
+    virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
+};
+
 int main()
 {
     std::cout << "Hello World!\n";
@@ -227,6 +273,9 @@ int main()
             132);
 
         classData->LogOut(ptrToGuyNoTypeData);
+
+        IObjectVisitor simple;
+        classData->Visit(ptrToGuyNoTypeData, &simple);
 
         float jumpOut = 0.0f;
 

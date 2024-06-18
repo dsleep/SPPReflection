@@ -340,6 +340,8 @@ namespace SPP
     class ReflectedStruct;
     class ReflectedProperty;
 
+    
+
     struct IVisitor
     {
         virtual bool EnterStructure(const ReflectedStruct& inValue) { return true; }
@@ -354,8 +356,13 @@ namespace SPP
         virtual void EndArrayItem(size_t InIdx) { }
         virtual void EndArray(const ReflectedProperty& inValue) { }
 
-        virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
+        virtual bool DataTypeResolved(const CPPType& inValue) { return false; }    
+
+        template<typename T>
+        void VisitValue(const ReflectedProperty& InProperty, T& InValue) {}
     };
+
+    
 
     ////////////////////////////////////////////
     //
@@ -398,7 +405,7 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
-
+            VisitValue(*this, value);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -423,7 +430,7 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
-
+            VisitValue(*this, value);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -448,6 +455,7 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
+            VisitValue(*this, value);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -762,7 +770,6 @@ namespace SPP
 
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
-            SE_ASSERT(_type.GetTypeData()->wrapManipulator);
             auto newOffset = AccessValue(InStruct);
             _struct->Visit(newOffset, InVisitor);
         }
