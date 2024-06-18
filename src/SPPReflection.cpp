@@ -95,4 +95,60 @@ namespace SPP
         }
         return false;
     }
+
+    struct ObjectVisitor : IVisitor
+    {
+        virtual bool EnterStructure(const ReflectedStruct& inValue) 
+        { 
+            return true; 
+        }
+
+        virtual void ExitStructure(const ReflectedStruct& inValue) 
+        {
+        }
+
+        virtual bool EnterProprety(const ReflectedProperty& inValue) 
+        { 
+            return true; 
+        }
+        virtual void ExitProprety(const ReflectedProperty& inValue) 
+        { 
+
+        }
+
+        // ARRAY
+        virtual void BeginArray(const ReflectedProperty& inValue) { }
+        virtual void BeginArrayItem(size_t InIdx) { }
+        virtual void EndArrayItem(size_t InIdx) { }
+        virtual void EndArray(const ReflectedProperty& inValue) { }
+
+        virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
+    };
+
+
+    void ReflectedStruct::Visit(void* InStruct, IVisitor* InVisitor)
+    {
+        auto curStruct = this;
+
+        if (InVisitor->EnterStructure(*this))
+        {
+            while (curStruct)
+            {
+                for (const auto& curProp : curStruct->_properties)
+                {
+                    SPP_LOG(LOG_REFLECTION, LOG_INFO, "NAME: %s OFFSET: %zd", curProp->GetName().c_str(), curProp->GetPropOffset());
+
+                    if (InVisitor->EnterProprety(*curProp))
+                    {
+                        curProp->Visit(InStruct, InVisitor);
+                        InVisitor->ExitProprety(*curProp);
+                    }
+                }
+
+                curStruct = curStruct->_parent;
+            }
+
+            InVisitor->ExitStructure(*this);
+        }
+    }
 }

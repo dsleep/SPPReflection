@@ -7,13 +7,49 @@
 
 #include "SPPReflection.h"
 
+namespace SPP
+{
+    struct ObjectBase
+    {
+        ENABLE_REFLECTION
+
+        std::string _baseName;
+
+        ObjectBase() {}
+        virtual ~ObjectBase() {}
+    };
+
+    class ObjectProperty : public ReflectedProperty
+    {
+
+    public:
+        ObjectProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset) {}
+        virtual ~ObjectProperty() {}
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
+    };
+
+    template<typename T, typename ClassSet> requires 
+        (std::is_pointer_v<T> && std::is_base_of_v<ObjectBase, std::remove_pointer_t<T> >) 
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< ObjectProperty >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }
+}
+
 using namespace SPP;
+
+
 
 struct SceneParent : public ObjectBase
 {
-    int32_t matrix;
+    ENABLE_REFLECTION_C(ObjectBase)
 
-    virtual CPPType GetCPPType() const override { return get_type < SceneParent >(); }
+    int32_t matrix;
 };
 
 struct PlayerData
@@ -30,8 +66,9 @@ struct PlayerFighters
 
 struct GuyTest : public ObjectBase
 {
-    ENABLE_REFLECTION;
+    ENABLE_REFLECTION_C(ObjectBase)
 
+public:
     float X;
     std::vector< int32_t > timeStamps;
     std::string GuyName;
@@ -84,7 +121,8 @@ enum class EGuyType
 struct SuperGuy : public GuyTest
 {
     ENABLE_REFLECTION_C(GuyTest);
-
+    
+public:
 
     int32_t health = 0;
     SceneParent* parent = nullptr;
@@ -113,7 +151,6 @@ public:
 
     auto& GetHitMe() { return HitMe; }
     auto& GetPlayers() { return Players; }
-
 };
 
 
@@ -149,6 +186,8 @@ SPP_AUTOREG_END
 int main()
 {
     std::cout << "Hello World!\n";
+
+    using guyParent = SuperGuy::parent_class;
 
     // lets create the top level class and populate some data
     SuperGuy guy;

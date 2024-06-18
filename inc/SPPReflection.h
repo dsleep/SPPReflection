@@ -40,7 +40,10 @@
 
 #define TYPE_LIST(...) type_list<__VA_ARGS__>
 
-#define PARENT_CLASS(parentC) using parent_class = parentC;
+#define PARENT_CLASS(parentC) \
+    public: \
+    using parent_class = parentC; \
+    protected:
 
 #define BEFRIEND_REFL_STRUCTS       \
     template<typename Class_Type>   \
@@ -334,21 +337,6 @@ namespace SPP
         return obj;
     }
 
-    /////////////////////////////////////////////////////////////////////////////////
-
-    // HAAXXORS to fake your objects
-    struct ObjectBase
-    {
-        std::string _baseName;
-
-        ObjectBase() {}
-
-        virtual CPPType GetCPPType() const { return get_type < ObjectBase >(); }
-        virtual ~ObjectBase() {}
-    };
-
-    /////////////////////////////////////////////////////////////////////////////////
-
     class ReflectedStruct;
     class ReflectedProperty;
 
@@ -381,11 +369,11 @@ namespace SPP
 
     protected:
         std::string _name;
-        size_t _propOffset = 0;
         CPPType _type;
+        size_t _propOffset = 0;
 
     public:
-        ReflectedProperty() {}
+        ReflectedProperty(const std::string &InName, CPPType InType, size_t InOffset = 0) : _name(InName), _type(InType), _propOffset(InOffset) {}
         virtual ~ReflectedProperty() {}
 
         const auto& GetName() const { return _name; }
@@ -398,7 +386,8 @@ namespace SPP
     class SPP_REFLECTION_API StringProperty : public ReflectedProperty
     {
     public:
-        StringProperty() {}
+        StringProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset) {}
         virtual ~StringProperty() {}
 
         std::string* AccessValue(void* structAddr)
@@ -422,7 +411,8 @@ namespace SPP
     class TNumericalProperty : public ReflectedProperty
     {
     public:
-        TNumericalProperty() {}
+        TNumericalProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset) {}
         virtual ~TNumericalProperty() {}
 
         T* AccessValue(void* structAddr)
@@ -445,7 +435,9 @@ namespace SPP
     class SPP_REFLECTION_API EnumProperty : public ReflectedProperty
     {
     public:
-        EnumProperty() {}
+        EnumProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset) {}
+
         virtual ~EnumProperty() {}
 
         int32_t* AccessValue(void* structAddr)
@@ -484,7 +476,10 @@ namespace SPP
         std::unique_ptr<ReflectedProperty> _inner;
 
     public:
-        DynamicArrayProperty() {}
+        DynamicArrayProperty(const std::string& InName, CPPType InType, 
+            std::unique_ptr<ReflectedProperty> && InInner,
+            size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset), _inner(std::move(InInner)) {}
         virtual ~DynamicArrayProperty() {}
 
         void* AccessValue(void* structAddr)
@@ -526,17 +521,7 @@ namespace SPP
         }
     };
 
-    class ObjectProperty : public ReflectedProperty
-    {
-
-    public:
-        ObjectProperty() {}
-        virtual ~ObjectProperty() {}
-
-        virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
-    };
-
-    class UniquePtrProperty : public ReflectedProperty
+    class SPP_REFLECTION_API UniquePtrProperty : public ReflectedProperty
     {
         BEFRIEND_REFL_STRUCTS
 
@@ -544,6 +529,13 @@ namespace SPP
         std::unique_ptr<ReflectedProperty> _inner;
 
     public:
+        UniquePtrProperty(const std::string& InName, 
+            CPPType InType, 
+            std::unique_ptr<ReflectedProperty> && InInner, 
+            size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset), _inner(std::move(InInner)) {}
+        virtual ~UniquePtrProperty() {}
+
         void* AccessValue(void* structAddr)
         {
             return (void*)((uint8_t*)structAddr + _propOffset);
@@ -571,9 +563,6 @@ namespace SPP
                 _inner->LogOut(_type.GetTypeData()->wrapManipulator->GetValue(uniquePtrAddr));
             }
         }
-
-        UniquePtrProperty() {}
-        virtual ~UniquePtrProperty() {}
     };
 
 
@@ -583,7 +572,7 @@ namespace SPP
     // 
     ////////////////////////////////////////////
 
-    struct Argument
+    struct SPP_REFLECTION_API Argument
     {
         CPPType type;
         void* reference = nullptr;
@@ -598,7 +587,7 @@ namespace SPP
         }
     };
 
-    class ReflectedMethod
+    class SPP_REFLECTION_API ReflectedMethod
     {
         BEFRIEND_REFL_STRUCTS
 
@@ -626,9 +615,10 @@ namespace SPP
     // 
     ////////////////////////////////////////////
 
-    class ReflectedStruct
+    class SPP_REFLECTION_API ReflectedStruct
     {
         BEFRIEND_REFL_STRUCTS
+        NO_COPY_ALLOWED(ReflectedStruct);
 
     protected:
         CPPType _type;
@@ -749,7 +739,7 @@ namespace SPP
     };
 
     // For nested structures
-    class StructProperty : public ReflectedProperty
+    class SPP_REFLECTION_API StructProperty : public ReflectedProperty
     {
         BEFRIEND_REFL_STRUCTS
 
@@ -757,7 +747,12 @@ namespace SPP
         ReflectedStruct* _struct = nullptr;
 
     public:
-        StructProperty() {}
+        StructProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) : 
+            ReflectedProperty(InName, InType, InOffset)
+        {
+            _struct = InType.GetTypeData()->structureRef.get();
+            SE_ASSERT(_struct);
+        }
         virtual ~StructProperty() {}
 
         void* AccessValue(void* structAddr)
@@ -796,8 +791,79 @@ namespace SPP
         return types;
     }
 
-    
 
+    template<typename T, typename ClassSet> requires (std::is_arithmetic_v<T>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< TNumericalProperty<T> >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }
+
+    template<typename T, typename ClassSet> requires (std::is_same_v<std::string, T>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< StringProperty >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }
+
+    template<typename T, typename ClassSet> requires (std::is_enum_v<T>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        static_assert(sizeof(T) == sizeof(int32_t));
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< EnumProperty >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }    
+
+    template<typename T, typename ClassSet>
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, std::vector<T> ClassSet::* prop)
+    {
+        auto arraytype = get_type< std::vector<T> >();
+
+        struct Dummy
+        {
+            T inner;
+        };
+
+        auto newProp = std::make_unique< DynamicArrayProperty >(InName, arraytype, CreateProperty("inner", &Dummy::inner), offsetOf(prop));
+        return std::move(newProp);
+    }
+
+    template<typename T, typename ClassSet>
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, std::unique_ptr<T> ClassSet::* prop)
+    {
+        auto propType = get_type< std::unique_ptr<T> >();
+
+        struct Dummy
+        {
+            T inner;
+        };
+
+        auto newProp = std::make_unique< UniquePtrProperty >(InName, propType, CreateProperty("inner", &Dummy::inner), offsetOf(prop));
+        return std::move(newProp);
+    }
+
+    template<typename T, typename ClassSet>
+    concept C_CreateProperty = requires (T ClassSet:: * prop)
+    {
+        CreateProperty<T, ClassSet>("", prop);
+    };
+
+    // if it failed at the rest try to make this a normal struct, maybe make it smart?
+    // this will fail if it is NOT a defined reflected struct
+    template<typename T, typename ClassSet> requires (!C_CreateProperty<T, ClassSet>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< StructProperty >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }
 
     template<typename Class_Type>
     struct ClassBuilder
@@ -859,111 +925,26 @@ namespace SPP
             CPPType classType = get_type< Class_Type >();
             classType.GetTypeData()->structureRef = std::move(_class);
         }
-
-        template<typename T, typename ClassSet = Class_Type>
-        std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
-        {
-            auto calcOffset = offsetOf(prop);
-            if constexpr (std::is_arithmetic_v<T>)
-            {
-                auto newProp = std::make_unique< TNumericalProperty<T> >();
-                newProp->_name = InName;
-                newProp->_propOffset = calcOffset;
-                newProp->_type = get_type<T>();
-                return std::move(newProp);
-            }
-            else if constexpr (std::is_pointer_v<T> &&
-                std::is_base_of_v<ObjectBase, std::remove_pointer_t<T> >)
-            {
-                auto newProp = std::make_unique< ObjectProperty >();
-                newProp->_name = InName;
-                newProp->_propOffset = calcOffset;
-                newProp->_type = get_type<T>();
-                return std::move(newProp);
-            }
-            else if constexpr (std::is_same_v<std::string, T>)
-            {
-                auto newProp = std::make_unique< StringProperty >();
-                newProp->_name = InName;
-                newProp->_propOffset = calcOffset;
-                newProp->_type = get_type<T>();
-                return std::move(newProp);
-            }
-            else if constexpr (std::is_enum_v<T>)
-            {
-                static_assert(sizeof(T) == sizeof(int32_t));
-
-                auto newProp = std::make_unique< EnumProperty >();
-                newProp->_name = InName;
-                newProp->_propOffset = calcOffset;
-                newProp->_type = get_type<T>();
-                return std::move(newProp);
-            }
-            else if constexpr (std::is_class_v<T>)
-            {
-                CPPType structType = get_type<T>();
-
-                auto newProp = std::make_unique< StructProperty >();
-                newProp->_name = InName;
-                newProp->_propOffset = offsetOf(prop);
-                newProp->_type = get_type<T>();
-                newProp->_struct = structType.GetTypeData()->structureRef.get();
-
-                return std::move(newProp);
-            }
-            else
-            {
-                SE_ASSERT(false);
-                //static_assert(false, "Unknown Property Type");
-            }
-
-            return nullptr;
-        }
-
-
-        template<typename T, typename ClassSet = Class_Type>
-        std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, std::vector<T> ClassSet::* prop)
-        {
-            auto arraytype = get_type< std::vector<T> >();
-
-            struct Dummy
-            {
-                T inner;
-            };
-
-            auto newProp = std::make_unique< DynamicArrayProperty >();
-            newProp->_name = InName;
-            newProp->_propOffset = offsetOf(prop);
-            newProp->_type = arraytype;
-            newProp->_inner = CreateProperty("inner", &Dummy::inner);
-            return std::move(newProp);
-        }
-
-        template<typename T, typename ClassSet = Class_Type>
-        std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, std::unique_ptr<T> ClassSet::* prop)
-        {
-            auto propType = get_type< std::unique_ptr<T> >();
-
-            struct Dummy
-            {
-                T inner;
-            };
-
-            auto newProp = std::make_unique< UniquePtrProperty >();
-            newProp->_name = InName;
-            newProp->_propOffset = offsetOf(prop);
-            newProp->_type = propType;
-            newProp->_inner = CreateProperty("inner", &Dummy::inner);
-            return std::move(newProp);
-        }
-
-        template<typename T>
+                
+        template<typename T> //requires C_CreateProperty<T, Class_Type>
         ClassBuilder& property(const char* InName, T Class_Type::* prop)
         {
             _class->_properties.push_back(CreateProperty(InName, prop));
             return *this;
         }
 
+        //template<typename T> requires (!C_CreateProperty<T, Class_Type>)
+        //ClassBuilder& property(const char* InName, T Class_Type::* prop)
+        //{
+        //    auto calcOffset = offsetOf(prop);
+        //    auto curType = get_type<T>();
+        //    // will assert if not struct
+        //    auto newProp = std::make_unique< StructProperty >(InName, curType, calcOffset);
+        //    _class->_properties.push_back(std::move(newProp));
+        //    return *this;
+        //}
+
+       
 
         template<typename Func>
         ClassBuilder& method(const char* InName, Func Class_Type::* method)
@@ -1034,31 +1015,5 @@ namespace SPP
     ClassBuilder< Class_Type> build_class(std::string_view name)
     {
         return ClassBuilder< Class_Type>();
-    }
-
-    //TODO FINISH THIS
-    void ReflectedStruct::Visit(void* InStruct, IVisitor* InVisitor)
-    {
-        auto curStruct = this;
-
-        InVisitor->EnterStructure(*this);
-
-        while (curStruct)
-        {
-            for (const auto& curProp : curStruct->_properties)
-            {
-                SPP_LOG(LOG_REFLECTION, LOG_INFO, "NAME: %s OFFSET: %zd", curProp->GetName().c_str(), curProp->GetPropOffset());
-
-                InVisitor->EnterProprety(*curProp);
-                curProp->Visit(InStruct, InVisitor);
-                InVisitor->ExitProprety(*curProp);
-            }
-
-            curStruct = curStruct->_parent;
-        }
-
-        InVisitor->ExitStructure(*this);
-    }
-
-    
+    }    
 }
