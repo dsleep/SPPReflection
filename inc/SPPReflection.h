@@ -339,7 +339,6 @@ namespace SPP
 
     class ReflectedStruct;
     class ReflectedProperty;
-
     
 
     struct IVisitor
@@ -358,8 +357,21 @@ namespace SPP
 
         virtual bool DataTypeResolved(const CPPType& inValue) { return false; }    
 
-        template<typename T>
-        void VisitValue(const ReflectedProperty& InProperty, T& InValue) {}
+        //
+        virtual void VisitValue(const ReflectedProperty& InProperty, uint8_t& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, uint16_t& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, uint32_t& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, uint64_t& InValue) {}
+         
+        virtual void VisitValue(const ReflectedProperty& InProperty, int8_t& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, int16_t& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, int32_t& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, int64_t& InValue) {}
+         
+        virtual void VisitValue(const ReflectedProperty& InProperty, float& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, double& InValue) {}
+
+        virtual void VisitValue(const ReflectedProperty& InProperty, std::string& InValue) {}
     };
 
     
@@ -405,7 +417,7 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
-            VisitValue(*this, value);
+            InVisitor->VisitValue(*this, value);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -430,7 +442,7 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
-            VisitValue(*this, value);
+            InVisitor->VisitValue(*this, value);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -455,7 +467,7 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto& value = *AccessValue(InStruct);
-            VisitValue(*this, value);
+            InVisitor->VisitValue(*this, value);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
