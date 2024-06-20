@@ -91,19 +91,21 @@ struct PlayerFighters
     float health;
 };
 
+
+
 struct Vector2
 {
 private:
     float data[2] = { 0.123f, 123.0f };
 
 public:
-    static constexpr std::tuple<float, size_t> AccessX()
+    static constexpr Accessor<float> AccessX()
     {
-        return { 0.0f, offsetof(Vector2, data[0]) };
+        return { offsetof(Vector2, data[0]) };
     }
-    static constexpr std::tuple<float, size_t> AccessY()
+    static constexpr Accessor<float> AccessY()
     {
-        return { 0.0f, offsetof(Vector2, data[1]) };
+        return { offsetof(Vector2, data[1]) };
     }
 };
 
@@ -129,8 +131,8 @@ public:
 SPP_AUTOREG_START
 
     REFL_CLASS_START(Vector2)
-        RC_ADD_PROP_ACCESS(X, AccessX)
-        RC_ADD_PROP_ACCESS(Y, AccessY)
+        RC_ADD_PROP_ACCESS("X", AccessX)
+        RC_ADD_PROP_ACCESS("Y", AccessY)
     REFL_CLASS_END
 
     REFL_CLASS_START(PlayerFighters)
@@ -227,7 +229,8 @@ SPP_AUTOREG_START
 
         RC_ADD_CONSTRUCTOR(const std::string &, int32_t)
         RC_ADD_CONSTRUCTOR(const std::string&)
-
+        RC_ADD_CONSTRUCTOR()
+        
     REFL_CLASS_END
                 
 
@@ -289,6 +292,8 @@ int main()
             // Args
             std::string("Te23232st"),
             132);
+
+        auto newClass2 = classData->Invoke_Constructor<SuperGuy*>();
 
         classData->LogOut(ptrToGuyNoTypeData);
 

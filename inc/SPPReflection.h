@@ -77,7 +77,7 @@
     .property( #InProp, &_REF_CC::InProp )
 
 #define RC_ADD_PROP_ACCESS(InProp, InAccess) \
-    .property_access( #InProp, &_REF_CC::InAccess )
+    .property_access( InProp, &_REF_CC::InAccess )
 
 #define RC_ADD_METHOD(InMethod) \
     .method( #InMethod, &_REF_CC::InMethod )
@@ -145,6 +145,12 @@ namespace SPP
         }
     };
 
+    template <typename T>
+    struct Accessor
+    {
+        using access_type = T;
+        size_t Offset;
+    };
 
     struct EnumCollection
     {
@@ -1135,17 +1141,21 @@ namespace SPP
             return *this;
         }
 
+        //template <typename T>
+        //struct Accessor
+        //{
+        //    using access_type = T;
+        //    size_t Offset;
+        //};
+
+
         template<typename Func> 
         ClassBuilder& property_access(const char* InName, Func funcAcc)
         {
             using return_type = typename function_traits<Func>::return_type;
-            auto returnType = get_type< return_type >();
-            auto funcType = get_type< Func >();
+            auto curAccess = funcAcc();
 
-            // ugly
-            auto tupleData = funcAcc();
-
-            _class->_properties.push_back(CreatePropertyDirect< std::tuple_element_t<0, decltype( tupleData )> >(InName, std::get<1>(tupleData)));
+            _class->_properties.push_back( CreatePropertyDirect< typename return_type::access_type > (InName, curAccess.Offset));
             return *this;
         }        
 
