@@ -14,8 +14,8 @@
 
 #include "SPPCore.h"
 #include "SPPLogging.h"
-
-//#include "json/json.h"
+#include "SPPStrumber.h"
+#include "SPPGUID.h"
 
 #include <iostream>
 #include <vector>
@@ -93,6 +93,9 @@
 #define RC_ENUM_VALUE(InEnumValue, InEnumString) \
         newEnum->EnumValues.push_back({ #InEnumString, (int32_t)InEnumValue });
 
+#define RC_ENUM_VALUE_V2(InEnumString, InEnumValue ) \
+        newEnum->EnumValues.push_back({ InEnumString, (int32_t)InEnumValue });
+
 #define REFL_ENUM_END \
         EnumCPP.GetTypeData()->enumCollection = std::move(newEnum); \
     }
@@ -146,26 +149,31 @@ namespace SPP
     };
 
     struct SPP_REFLECTION_API type_data
-    {
-        std::string name;
-
+    {        
+        std::string compile_time_name;
         std::size_t get_sizeof;
         std::size_t get_pointer_dimension;
 
-        uint32_t is_class = 1;
-        uint32_t is_enum : 1;
-        uint32_t is_array : 1;
-        uint32_t is_const : 1;
-        uint32_t is_volatile : 1;
-        uint32_t is_pointer : 1;
-        uint32_t is_arithmetic : 1;
-        uint32_t is_function : 1;
-        uint32_t is_member_object_pointer : 1;
-        uint32_t is_member_function_pointer : 1;
-        uint32_t is_reference : 1;
-        uint32_t is_lvalue_reference : 1;
-        uint32_t is_rvalue_reference : 1;
+        union {
+            struct {
+                uint32_t is_class : 1;
+                uint32_t is_enum : 1;
+                uint32_t is_array : 1;
+                uint32_t is_const : 1;
+                uint32_t is_volatile : 1;
+                uint32_t is_pointer : 1;
+                uint32_t is_arithmetic : 1;
+                uint32_t is_function : 1;
+                uint32_t is_member_object_pointer : 1;
+                uint32_t is_member_function_pointer : 1;
+                uint32_t is_reference : 1;
+                uint32_t is_lvalue_reference : 1;
+                uint32_t is_rvalue_reference : 1;
+            };
+            uint32_t is_values;
+        };
 
+        std::string runtime_defined_name;
         type_data* raw_type_data = nullptr;
 
         std::unique_ptr< struct DataAllocation > dataAllocation;
@@ -173,6 +181,25 @@ namespace SPP
         std::unique_ptr< struct WrapManipulator > wrapManipulator;
         std::unique_ptr< struct EnumCollection > enumCollection;
         std::unique_ptr< class ReflectedStruct > structureRef;
+
+        bool operator==(const type_data& InValue) const
+        {
+            return
+                compile_time_name == InValue.compile_time_name &&
+                get_sizeof == InValue.get_sizeof &&
+                get_pointer_dimension == InValue.get_pointer_dimension &&
+                is_values == InValue.is_values;
+        }
+
+        bool operator!=(const type_data& InValue) const
+        {
+            return !(*this == InValue);
+        }
+
+        const auto& GetName() const
+        {
+            return runtime_defined_name.empty() ? compile_time_name : runtime_defined_name;
+        }
     };
 
     class SPP_REFLECTION_API CPPType
@@ -197,6 +224,12 @@ namespace SPP
             return _typeData;
         }
 
+        type_data* operator-> ()const
+        {
+            SE_ASSERT(_typeData);
+            return GetTypeData();
+        }
+
         bool ConvertibleTo(const CPPType& InValue) const
         {
             if (_typeData == InValue._typeData)
@@ -204,11 +237,22 @@ namespace SPP
                 return true;
             }
 
-            //NOT A GOOD CHEAT TODO, CREATE A CONVE
-            if (_typeData == InValue._typeData->raw_type_data ||
-                _typeData->raw_type_data == InValue._typeData)
+            if (_typeData->is_pointer && InValue._typeData->is_pointer)
             {
+                //check classes heirarchy  
+
                 return true;
+            }
+
+            //NOT A GOOD CHEAT TODO, CREATE A CONVE
+            if (_typeData->raw_type_data != nullptr || InValue._typeData->raw_type_data != nullptr)
+            {
+                if (_typeData == InValue._typeData->raw_type_data ||
+                    _typeData->raw_type_data == InValue._typeData ||
+                    _typeData->raw_type_data == InValue._typeData->raw_type_data)                    
+                    {
+                        return true;
+                    }
             }
 
             return false;
@@ -247,6 +291,7 @@ namespace SPP
         TypeCollection();
         type_data* Push(std::unique_ptr<type_data>&& InData);
         type_data* GetType(const char* InName);
+        void IterateTypes(const std::function< void(const type_data*) >& InFunc);
     };
 
     SPP_REFLECTION_API TypeCollection& GetTypeCollection();
@@ -256,7 +301,7 @@ namespace SPP
     using is_complete_type = std::integral_constant<bool, !std::is_function<T>::value && !std::is_same<T, void>::value>;
 
     template<typename T> requires is_complete_type<T>::value
-        CPPType create_or_get_type() noexcept
+    CPPType create_or_get_type() noexcept
     {
         // when you get an error here, then the type was not completely defined
         // (a forward declaration is not enough because base_classes will not be found)
@@ -269,7 +314,7 @@ namespace SPP
     /////////////////////////////////////////////////////////////////////////////////
 
     template<typename T> requires (!is_complete_type<T>::value)
-        CPPType create_or_get_type() noexcept
+    CPPType create_or_get_type() noexcept
     {
         static const CPPType val = create_type(GetTypeCollection().Push(make_type_data<T>()));
         return val;
@@ -282,13 +327,13 @@ namespace SPP
     }
 
     template<>
-    CPPType get_type<void>() noexcept
+    inline CPPType get_type<void>() noexcept
     {
         static const CPPType val = create_type(nullptr);
         return val;
     }
 
-    CPPType get_type_by_name(const char* InString);
+    SPP_REFLECTION_API CPPType get_type_by_name(const char* InString);
 
     template<typename T>
     std::unique_ptr<type_data> make_type_data()
@@ -372,6 +417,10 @@ namespace SPP
         virtual void VisitValue(const ReflectedProperty& InProperty, double& InValue) {}
 
         virtual void VisitValue(const ReflectedProperty& InProperty, std::string& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, Strumber& InValue) {}
+        virtual void VisitValue(const ReflectedProperty& InProperty, GUID& InValue) {}
+
+        virtual void VisitValue(const ReflectedProperty& InProperty, bool& InValue) {}
     };
 
     
@@ -396,8 +445,9 @@ namespace SPP
         virtual ~ReflectedProperty() {}
 
         const auto& GetName() const { return _name; }
+        auto GetCPPType() const { return _type; }
         auto GetPropOffset() const { return _propOffset; }
-
+        virtual const char* GetPropertyClass() const { return "UNSET"; }
         virtual void Visit(void* InStruct, IVisitor* InVisitor) {}
         virtual void LogOut(void* structAddr, int8_t Indent = 0) {}
     };
@@ -424,6 +474,60 @@ namespace SPP
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sString: %s", GetIndent(Indent), AccessValue(structAddr)->c_str());
         }
+
+        virtual const char* GetPropertyClass() const override { return "StringProperty"; }
+    };
+
+    class SPP_REFLECTION_API StrumberProperty : public ReflectedProperty
+    {
+    public:
+        StrumberProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset) {}
+        virtual ~StrumberProperty() {}
+
+        Strumber* AccessValue(void* structAddr)
+        {
+            return (Strumber*)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            auto& value = *AccessValue(InStruct);
+            InVisitor->VisitValue(*this, value);
+        }
+
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
+        {
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sStrumber: %s", GetIndent(Indent), AccessValue(structAddr)->ToString().c_str());
+        }
+
+        virtual const char* GetPropertyClass() const override { return "StrumberProperty"; }
+    };
+
+    class SPP_REFLECTION_API GUIDProperty : public ReflectedProperty
+    {
+    public:
+        GUIDProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
+            ReflectedProperty(InName, InType, InOffset) {}
+        virtual ~GUIDProperty() {}
+
+        GUID* AccessValue(void* structAddr)
+        {
+            return (GUID*)((uint8_t*)structAddr + _propOffset);
+        }
+
+        virtual void Visit(void* InStruct, IVisitor* InVisitor)
+        {
+            auto& value = *AccessValue(InStruct);
+            InVisitor->VisitValue(*this, value);
+        }
+
+        virtual void LogOut(void* structAddr, int8_t Indent = 0) override
+        {
+            SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sGUID: %s", GetIndent(Indent), AccessValue(structAddr)->ToString().c_str());
+        }
+
+        virtual const char* GetPropertyClass() const override { return "GUIDProperty"; }
     };
 
     template<typename T>
@@ -449,6 +553,8 @@ namespace SPP
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sNumber: %s", GetIndent(Indent), std::to_string(*AccessValue(structAddr)).c_str());
         }
+
+        virtual const char* GetPropertyClass() const override { return "TNumericalProperty"; }
     };
 
     class SPP_REFLECTION_API EnumProperty : public ReflectedProperty
@@ -466,8 +572,22 @@ namespace SPP
 
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
-            auto& value = *AccessValue(InStruct);
-            InVisitor->VisitValue(*this, value);
+            auto& curValue = *AccessValue(InStruct);
+
+            SE_ASSERT(_type.GetTypeData()->enumCollection);
+
+            for (auto& pairs : _type.GetTypeData()->enumCollection->EnumValues)
+            {
+                if (curValue == std::get<1>(pairs))
+                {
+                    // visit as string
+                    InVisitor->VisitValue(*this, std::get<0>(pairs));   
+                    return;
+                }
+            }
+
+            // visit as number if no match?
+            InVisitor->VisitValue(*this, curValue);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
@@ -486,6 +606,8 @@ namespace SPP
 
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sUnknown enum value", GetIndent(Indent));
         }
+
+        virtual const char* GetPropertyClass() const override { return "EnumProperty"; }
     };
 
     class SPP_REFLECTION_API DynamicArrayProperty : public ReflectedProperty
@@ -539,6 +661,8 @@ namespace SPP
                 _inner->LogOut(_type.GetTypeData()->arrayManipulator->Element(arrayAddr, (int32_t)Iter), Indent + 1);
             }
         }
+
+        virtual const char* GetPropertyClass() const override { return "DynamicArrayProperty"; }
     };
 
     class SPP_REFLECTION_API UniquePtrProperty : public ReflectedProperty
@@ -583,6 +707,8 @@ namespace SPP
                 _inner->LogOut(_type.GetTypeData()->wrapManipulator->GetValue(uniquePtrAddr));
             }
         }
+
+        virtual const char* GetPropertyClass() const override { return "UniquePtrProperty"; }
     };
 
 
@@ -651,6 +777,24 @@ namespace SPP
     public:
         ReflectedStruct() {}
 
+        virtual void DumpLayout()
+        {
+            auto curStruct = this;
+
+            while (curStruct)
+            {
+                for (const auto& curProp : curStruct->_properties)
+                {
+                    SPP_LOG(LOG_REFLECTION, LOG_INFO, "NAME: %s TYPE: %s PROPCLASS: %s, OFFSET: %zd", 
+                        curProp->GetName().c_str(), 
+                        curProp->GetCPPType()->GetName().c_str(),
+                        curProp->GetPropertyClass(),
+                        curProp->GetPropOffset());
+                }
+                curStruct = curStruct->_parent;
+            }
+        }
+
         virtual void LogOut(void* structAddr, int8_t Indent = 0)
         {
             auto curStruct = this;
@@ -702,8 +846,9 @@ namespace SPP
                     if (method->GetName() == MethodName)
                     {
                         const auto returnType = get_type < Ret >();
-                        if (returnType != method->GetReturnType())
-                        {
+                        if (!method->GetReturnType().ConvertibleTo(returnType))
+                        {             
+                            SPP_LOG(LOG_REFLECTION, LOG_INFO, "INVOKE: return type fail");
                             continue;
                         }
 
@@ -716,6 +861,7 @@ namespace SPP
                                 //TODO: needs to be a way to be more like std::is_convertible_v
                                 if (!arguments[Iter].type.ConvertibleTo(argsTypes[Iter]))
                                 {
+                                    SPP_LOG(LOG_REFLECTION, LOG_INFO, "INVOKE: arg match fail");
                                     bValid = false;
                                     break;
                                 }
@@ -764,14 +910,12 @@ namespace SPP
         BEFRIEND_REFL_STRUCTS
 
     protected:
-        ReflectedStruct* _struct = nullptr;
+        //ReflectedStruct* _struct = nullptr;
 
     public:
         StructProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) : 
             ReflectedProperty(InName, InType, InOffset)
-        {
-            _struct = InType.GetTypeData()->structureRef.get();
-            SE_ASSERT(_struct);
+        {            
         }
         virtual ~StructProperty() {}
 
@@ -783,17 +927,24 @@ namespace SPP
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
         {
             auto newOffset = AccessValue(InStruct);
-            _struct->Visit(newOffset, InVisitor);
+
+            auto refStruct = _type.GetTypeData()->structureRef.get();
+            SE_ASSERT(refStruct);
+            refStruct->Visit(newOffset, InVisitor);
         }
 
         virtual void LogOut(void* structAddr, int8_t Indent = 0) override
         {
             SPP_LOG(LOG_REFLECTION, LOG_INFO, "%sSTRUCT PROP", GetIndent(Indent));
             auto newOffset = AccessValue(structAddr);
-            _struct->LogOut(newOffset, Indent + 1);
-        }
-    };
 
+            auto refStruct = _type.GetTypeData()->structureRef.get();
+            SE_ASSERT(refStruct);
+            refStruct->LogOut(newOffset, Indent + 1);
+        }
+
+        virtual const char* GetPropertyClass() const override { return "StructProperty"; }
+    };
 
     template<typename T, typename U>
     constexpr size_t offsetOf(U T::* member)
@@ -828,6 +979,26 @@ namespace SPP
         auto newProp = std::make_unique< StringProperty >(InName, curType, calcOffset);
         return std::move(newProp);
     }
+
+    template<typename T, typename ClassSet> requires (std::is_same_v<Strumber, T>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< StrumberProperty >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }
+
+    template<typename T, typename ClassSet> requires (std::is_same_v<GUID, T>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        auto calcOffset = offsetOf(prop);
+        auto curType = get_type<T>();
+        auto newProp = std::make_unique< GUIDProperty >(InName, curType, calcOffset);
+        return std::move(newProp);
+    }
+
+    
 
     template<typename T, typename ClassSet> requires (std::is_enum_v<T>)
     std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
@@ -933,9 +1104,10 @@ namespace SPP
         template<typename U = Class_Type> requires (!HasParentClass<U>)
             void LinkParents() {}
 
-        ClassBuilder()
+        ClassBuilder(std::string_view InName)
         {
             _class = std::make_unique< ReflectedStruct >();
+            _class->_type = get_type< Class_Type >();
             LinkParents();
         }
 
@@ -1033,6 +1205,6 @@ namespace SPP
     template<typename Class_Type>
     ClassBuilder< Class_Type> build_class(std::string_view name)
     {
-        return ClassBuilder< Class_Type>();
+        return ClassBuilder< Class_Type>(name);
     }    
 }

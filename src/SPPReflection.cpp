@@ -57,18 +57,37 @@ namespace SPP
 
     type_data* TypeCollection::Push(std::unique_ptr<type_data>&& InData)
     {
-        auto outTypeData = InData.get();
+        for (const auto& curType : _impl->type_store)
+        {
+            if (*InData == *curType)
+            {
+                return curType.get();
+            }
+        }
+
         _impl->type_store.push_back(std::move(InData));
-        return outTypeData;
+        return _impl->type_store.back().get();
     }
 
     type_data* TypeCollection::GetType(const char* InName)
     {
+        std::string CmpName(InName);
         for (const auto& curType : _impl->type_store)
         {
-            return curType.get();
+            if (curType->GetName() == CmpName)
+            {
+                return curType.get();
+            }
         }
         return nullptr;
+    }
+
+    void TypeCollection::IterateTypes(const std::function< void(const type_data*) >& InFunc)
+    {
+        for (const auto& curType : _impl->type_store)
+        {
+            InFunc(curType.get());
+        }
     }
 
     TypeCollection& GetTypeCollection()
@@ -95,36 +114,6 @@ namespace SPP
         }
         return false;
     }
-
-    struct ObjectVisitor : IVisitor
-    {
-        virtual bool EnterStructure(const ReflectedStruct& inValue) 
-        { 
-            return true; 
-        }
-
-        virtual void ExitStructure(const ReflectedStruct& inValue) 
-        {
-        }
-
-        virtual bool EnterProprety(const ReflectedProperty& inValue) 
-        { 
-            return true; 
-        }
-        virtual void ExitProprety(const ReflectedProperty& inValue) 
-        { 
-
-        }
-
-        // ARRAY
-        virtual void BeginArray(const ReflectedProperty& inValue) { }
-        virtual void BeginArrayItem(size_t InIdx) { }
-        virtual void EndArrayItem(size_t InIdx) { }
-        virtual void EndArray(const ReflectedProperty& inValue) { }
-
-        virtual bool DataTypeResolved(const CPPType& inValue) { return false; }
-    };
-
 
     void ReflectedStruct::Visit(void* InStruct, IVisitor* InVisitor)
     {
