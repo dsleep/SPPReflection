@@ -58,16 +58,14 @@ namespace SPP
     };
 
     template<typename T, typename ClassSet> requires 
-        (std::is_pointer_v<T> && std::is_base_of_v<ObjectBase, std::remove_pointer_t<T> >) 
+    (std::is_pointer_v<T> && std::is_base_of_v<ObjectBase, std::remove_pointer_t<T> >) 
     std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
     {
         auto calcOffset = offsetOf(prop);
         auto curType = get_type<T>();
         auto newProp = std::make_unique< ObjectProperty >(InName, curType, calcOffset);
         return std::move(newProp);
-    }
-
-    
+    }    
 }
 
 using namespace SPP;
@@ -93,6 +91,22 @@ struct PlayerFighters
     float health;
 };
 
+struct Vector2
+{
+private:
+    float data[2] = { 0.123f, 123.0f };
+
+public:
+    static constexpr std::tuple<float, size_t> AccessX()
+    {
+        return { 0.0f, offsetof(Vector2, data[0]) };
+    }
+    static constexpr std::tuple<float, size_t> AccessY()
+    {
+        return { 0.0f, offsetof(Vector2, data[1]) };
+    }
+};
+
 struct GuyTest : public ObjectBase
 {
     ENABLE_REFLECTION_C(ObjectBase)
@@ -101,6 +115,7 @@ public:
     float X;
     std::vector< int32_t > timeStamps;
     std::string GuyName;
+    Vector2 location;
 
     float DoJump(float howHigh, std::string &TestOut)
     {
@@ -113,10 +128,15 @@ public:
 
 SPP_AUTOREG_START
 
+    REFL_CLASS_START(Vector2)
+        RC_ADD_PROP_ACCESS(X, AccessX)
+        RC_ADD_PROP_ACCESS(Y, AccessY)
+    REFL_CLASS_END
+
     REFL_CLASS_START(PlayerFighters)
 
         RC_ADD_PROP(name)
-        RC_ADD_PROP(health)
+        RC_ADD_PROP(health)    
 
     REFL_CLASS_END
 
@@ -133,6 +153,8 @@ SPP_AUTOREG_START
         RC_ADD_PROP(X)
         RC_ADD_PROP(timeStamps)
         RC_ADD_PROP(GuyName)
+
+        RC_ADD_PROP(location)
 
         RC_ADD_METHOD(DoJump)
 
@@ -217,6 +239,17 @@ SPP_AUTOREG_END
 int main()
 {
     std::cout << "Hello World!\n";
+
+    GetTypeCollection().IterateTypes([](const type_data* InType)
+    {
+        SPP_LOG(LOG_APP, LOG_INFO, "type %s", InType->GetName().c_str());
+        if (InType->structureRef)
+        {
+            SPP_LOG(LOG_APP, LOG_INFO, " - has structure");
+
+            InType->structureRef->DumpLayout();
+        }
+    });
 
     using guyParent = SuperGuy::parent_class;
 

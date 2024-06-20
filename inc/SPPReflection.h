@@ -76,6 +76,9 @@
 #define RC_ADD_PROP(InProp) \
     .property( #InProp, &_REF_CC::InProp )
 
+#define RC_ADD_PROP_ACCESS(InProp, InAccess) \
+    .property_access( #InProp, &_REF_CC::InAccess )
+
 #define RC_ADD_METHOD(InMethod) \
     .method( #InMethod, &_REF_CC::InMethod )
 
@@ -962,53 +965,59 @@ namespace SPP
     }
 
 
-    template<typename T, typename ClassSet> requires (std::is_arithmetic_v<T>)
-    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    template<typename T> requires (std::is_arithmetic_v<T>)
+    std::unique_ptr< ReflectedProperty > CreatePropertyDirect(const char* InName, size_t calcOffset)
     {
-        auto calcOffset = offsetOf(prop);
         auto curType = get_type<T>();
         auto newProp = std::make_unique< TNumericalProperty<T> >(InName, curType, calcOffset);
         return std::move(newProp);
     }
 
-    template<typename T, typename ClassSet> requires (std::is_same_v<std::string, T>)
-    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    template<typename T> requires (std::is_same_v<std::string, T>)
+    std::unique_ptr< ReflectedProperty > CreatePropertyDirect(const char* InName, size_t calcOffset)
     {
-        auto calcOffset = offsetOf(prop);
         auto curType = get_type<T>();
         auto newProp = std::make_unique< StringProperty >(InName, curType, calcOffset);
         return std::move(newProp);
     }
 
-    template<typename T, typename ClassSet> requires (std::is_same_v<Strumber, T>)
-    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    template<typename T> requires (std::is_same_v<Strumber, T>)
+    std::unique_ptr< ReflectedProperty > CreatePropertyDirect(const char* InName, size_t calcOffset)
     {
-        auto calcOffset = offsetOf(prop);
         auto curType = get_type<T>();
         auto newProp = std::make_unique< StrumberProperty >(InName, curType, calcOffset);
         return std::move(newProp);
     }
 
-    template<typename T, typename ClassSet> requires (std::is_same_v<GUID, T>)
-    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    template<typename T> requires (std::is_same_v<GUID, T>)
+    std::unique_ptr< ReflectedProperty > CreatePropertyDirect(const char* InName, size_t calcOffset)
     {
-        auto calcOffset = offsetOf(prop);
         auto curType = get_type<T>();
         auto newProp = std::make_unique< GUIDProperty >(InName, curType, calcOffset);
         return std::move(newProp);
     }
 
-    
-
-    template<typename T, typename ClassSet> requires (std::is_enum_v<T>)
-    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    template<typename T> requires (std::is_enum_v<T>)
+    std::unique_ptr< ReflectedProperty > CreatePropertyDirect(const char* InName, size_t calcOffset)
     {
         static_assert(sizeof(T) == sizeof(int32_t));
-        auto calcOffset = offsetOf(prop);
         auto curType = get_type<T>();
         auto newProp = std::make_unique< EnumProperty >(InName, curType, calcOffset);
         return std::move(newProp);
-    }    
+    }
+
+    template<typename T>
+    concept C_CreateProperty_Simple = requires (size_t offsetIn)
+    {
+        CreatePropertyDirect<T>("", offsetIn);
+    };
+
+    template<typename T, typename ClassSet> requires (C_CreateProperty_Simple<T>)
+    std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, T ClassSet::* prop)
+    {
+        size_t calcOffset = offsetOf(prop);
+        return CreatePropertyDirect<T>(InName, calcOffset);
+    }      
 
     template<typename T, typename ClassSet>
     std::unique_ptr< ReflectedProperty > CreateProperty(const char* InName, std::vector<T> ClassSet::* prop)
@@ -1043,6 +1052,8 @@ namespace SPP
     {
         CreateProperty<T, ClassSet>("", prop);
     };
+
+    
 
     // if it failed at the rest try to make this a normal struct, maybe make it smart?
     // this will fail if it is NOT a defined reflected struct
@@ -1124,18 +1135,19 @@ namespace SPP
             return *this;
         }
 
-        //template<typename T> requires (!C_CreateProperty<T, Class_Type>)
-        //ClassBuilder& property(const char* InName, T Class_Type::* prop)
-        //{
-        //    auto calcOffset = offsetOf(prop);
-        //    auto curType = get_type<T>();
-        //    // will assert if not struct
-        //    auto newProp = std::make_unique< StructProperty >(InName, curType, calcOffset);
-        //    _class->_properties.push_back(std::move(newProp));
-        //    return *this;
-        //}
+        template<typename Func> 
+        ClassBuilder& property_access(const char* InName, Func funcAcc)
+        {
+            using return_type = typename function_traits<Func>::return_type;
+            auto returnType = get_type< return_type >();
+            auto funcType = get_type< Func >();
 
-       
+            // ugly
+            auto tupleData = funcAcc();
+
+            _class->_properties.push_back(CreatePropertyDirect< std::tuple_element_t<0, decltype( tupleData )> >(InName, std::get<1>(tupleData)));
+            return *this;
+        }        
 
         template<typename Func>
         ClassBuilder& method(const char* InName, Func Class_Type::* method)
