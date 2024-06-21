@@ -91,14 +91,21 @@ struct PlayerFighters
     float health;
 };
 
-
-
 struct Vector2
 {
 private:
     float data[2] = { 0.123f, 123.0f };
 
 public:
+    float* XGet()
+    {
+        return &data[0];
+    }
+    float* YGet()
+    {
+        return &data[1];
+    }
+
     static constexpr Accessor<float> AccessX()
     {
         return { offsetof(Vector2, data[0]) };
@@ -131,8 +138,8 @@ public:
 SPP_AUTOREG_START
 
     REFL_CLASS_START(Vector2)
-        RC_ADD_PROP_ACCESS("X", AccessX)
-        RC_ADD_PROP_ACCESS("Y", AccessY)
+        RC_ADD_PROP_ACCESS("X", XGet)
+        RC_ADD_PROP_ACCESS("Y", YGet)
     REFL_CLASS_END
 
     REFL_CLASS_START(PlayerFighters)

@@ -542,14 +542,28 @@ namespace SPP
     template<typename T>
     class TNumericalProperty : public ReflectedProperty
     {
+    protected:
+        // one of hacks for numerical, fix this?
+        std::function< T* (void*) > _accessValue;
+
     public:
         TNumericalProperty(const std::string& InName, CPPType InType, size_t InOffset = 0) :
             ReflectedProperty(InName, InType, InOffset) {}
+        TNumericalProperty(const std::string& InName, CPPType InType, std::function< T* (void*) > &&AccessValue) :
+            ReflectedProperty(InName, InType, 0), _accessValue(AccessValue) {}
+
         virtual ~TNumericalProperty() {}
 
         T* AccessValue(void* structAddr)
         {
-            return (T*)((uint8_t*)structAddr + _propOffset);
+            if (_accessValue)
+            {
+                return _accessValue(structAddr);
+            }
+            else
+            {
+                return (T*)((uint8_t*)structAddr + _propOffset);
+            }
         }
 
         virtual void Visit(void* InStruct, IVisitor* InVisitor)
@@ -1142,12 +1156,20 @@ namespace SPP
         }
 
         template<typename Func> 
-        ClassBuilder& property_access(const char* InName, Func funcAcc)
+        ClassBuilder& property_access(const char* InName, Func Class_Type::* method)
         {
-            using return_type = typename function_traits<Func>::return_type;
-            auto curAccess = funcAcc();
+            using return_type = typename function_traits<Func>::return_type;            
+            using raw_numerical_type = std::remove_pointer_t<return_type>;
+            //SUPER HACKS
+            static_assert(std::is_arithmetic_v<raw_numerical_type>, "MUST BE ARITHMETIC FOR NOW");            
 
-            _class->_properties.push_back( CreatePropertyDirect< typename return_type::access_type > (InName, curAccess.Offset));
+            auto curType = get_type<raw_numerical_type>();
+            auto newProp = std::make_unique< TNumericalProperty<raw_numerical_type> >(InName, curType, [method](void* InClassAddr) -> raw_numerical_type*
+            {
+                auto classVal = ((Class_Type*)InClassAddr);
+                return (classVal->*method)();
+            });
+            _class->_properties.push_back(std::move(newProp));
             return *this;
         }        
 
