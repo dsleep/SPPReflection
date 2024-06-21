@@ -1141,14 +1141,6 @@ namespace SPP
             return *this;
         }
 
-        //template <typename T>
-        //struct Accessor
-        //{
-        //    using access_type = T;
-        //    size_t Offset;
-        //};
-
-
         template<typename Func> 
         ClassBuilder& property_access(const char* InName, Func funcAcc)
         {
